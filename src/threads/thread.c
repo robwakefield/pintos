@@ -252,9 +252,17 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+  list_insert_ordered (&ready_list, &t->elem, &compare_priority, NULL);
   t->status = THREAD_READY;
   intr_set_level (old_level);
+
+  if (t->priority > thread_get_priority()) {
+    printf("inside if, before yield\n");
+    thread_yield();
+  }
+
+  printf("outside if\n");
+
 }
 
 /* Returns the name of the running thread. */
@@ -316,6 +324,7 @@ thread_exit (void)
 void
 thread_yield (void) 
 {
+  printf("inside yield\n");
   struct thread *cur = thread_current ();
   enum intr_level old_level;
   
@@ -323,10 +332,18 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+    list_insert_ordered (&ready_list, &cur->elem, &compare_priority, NULL);
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
+}
+
+/* compares priorities of two threads, 
+returns true if priority of thread A is greate than priority of thread B */
+bool compare_priority(const struct list_elem *first, const struct list_elem *second, void *aux UNUSED) {
+  struct thread *thread_a = list_entry(first, struct thread, elem);
+  struct thread *thread_b = list_entry(second, struct thread, elem);
+  return thread_a->priority > thread_b->priority;
 }
 
 /* Invoke function 'func' on all threads, passing along 'aux'.
@@ -351,6 +368,13 @@ void
 thread_set_priority (int new_priority) 
 {
   thread_current ()->priority = new_priority;
+
+  if (!list_empty(&ready_list)) {
+    struct thread *thread_head = list_entry(list_front(&ready_list), struct thread, elem);
+    if (thread_get_priority() < thread_head->priority) {
+      thread_yield();
+    }
+  }
 }
 
 /* Returns the current thread's priority. */
