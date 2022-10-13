@@ -30,11 +30,15 @@ static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
 
+/* List storing sleeping threads */
+static struct list sleep_list;
+
 /* Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
 void
 timer_init (void) 
 {
+  list_init(&sleep_list); /* initialise sleep list for sleeping threads*/
   pit_configure_channel (0, 2, TIMER_FREQ);
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
 }
@@ -84,16 +88,49 @@ timer_elapsed (int64_t then)
   return timer_ticks () - then;
 }
 
+/* function to compare new sleeping threads for inserting into sleep_list in the right order */
+static bool 
+order_threads(const struct list_elem *first, const struct list_elem *second, void *aux UNUSED) {
+  struct sleep_list_elem *thread_a = list_entry(first, struct sleep_list_elem, elem);
+  struct sleep_list_elem *thread_b = list_entry(second, struct sleep_list_elem, elem);
+  return thread_a->sleep_for_ticks < thread_b->sleep_for_ticks;
+}
+
 /* Sleeps for approximately TICKS timer ticks.  Interrupts must
    be turned on. */
 void
 timer_sleep (int64_t ticks) 
 {
-  int64_t start = timer_ticks ();
+  if(ticks <= 0)
+    return;
+  
+  int64_t start = timer_ticks (); /* timer ticks in OS uptil timer_sleep was called */
+  ASSERT (intr_get_level () == INTR_ON); /* checks if interrupts are on */
+  
+  /* get current thread, thread to put to sleep */
+  struct thread *curr_thread = thread_current();
 
-  ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed (start) < ticks) 
-    thread_yield ();
+  /* create and initialize a semaphore for new sleeping thread*/
+  struct semaphore new_sema;
+  sema_init(&new_sema, 0);
+
+  /* initialise new 'sleeping' element to put on the sleep list */
+  struct sleep_list_elem new_sleep_thread;
+  new_sleep_thread.sleep_thread = curr_thread;
+  new_sleep_thread.sleep_for_ticks = start + ticks;
+  new_sleep_thread.thread_sema = &new_sema;
+
+  /* disable interrupts while accessing sleep_list which can be modified by timer_interrupt */
+  enum intr_level prev_level = intr_disable ();
+
+  /* insert new sleeping element to the sleep list (in order using specific comparing function) */
+  list_insert_ordered(&sleep_list, &(new_sleep_thread.elem), &order_threads, NULL);
+
+  /* down the semaphore (essentialy blocking the thread) */
+  sema_down(&new_sema);
+
+  /* enable interrupts*/
+  intr_set_level (prev_level);
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -171,6 +208,20 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
+
+  /* traverse the sleep_list and check if any threads need to wake up */
+  while(!list_empty(&sleep_list)){
+    struct sleep_list_elem *sleep_thread = list_entry(list_begin(&sleep_list), struct sleep_list_elem, elem);
+
+    if(ticks >= sleep_thread->sleep_for_ticks){
+      /* if thread is ready to wake up -> release semaphore and pop from the sleep list */
+      sema_up(sleep_thread->thread_sema);
+      list_pop_front(&sleep_list);
+    } else {
+      break;
+    }
+  }
+  
   thread_tick ();
 }
 
