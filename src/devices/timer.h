@@ -3,6 +3,17 @@
 
 #include <round.h>
 #include <stdint.h>
+#include <stdbool.h>
+#include "lib/kernel/list.h"
+
+/* structure for element of the sleeping threads list */
+struct sleep_list_elem {
+  struct semaphore *thread_sema; /* to unblock a sleeping thread */
+  struct thread *sleep_thread; /* sleeping (current) thread */
+
+  int64_t sleep_for_ticks; /* number of ticks to wake up after */
+  struct list_elem elem;
+};
 
 /* Number of timer interrupts per second. */
 #define TIMER_FREQ 100
