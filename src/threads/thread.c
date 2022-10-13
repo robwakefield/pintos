@@ -256,13 +256,8 @@ thread_unblock (struct thread *t)
   t->status = THREAD_READY;
   intr_set_level (old_level);
 
-  if (t->priority > thread_get_priority()) {
-    printf("inside if, before yield\n");
+  if (compare_priority(&t->elem, &thread_current()->elem, NULL))
     thread_yield();
-  }
-
-  printf("outside if\n");
-
 }
 
 /* Returns the name of the running thread. */
@@ -324,7 +319,6 @@ thread_exit (void)
 void
 thread_yield (void) 
 {
-  printf("inside yield\n");
   struct thread *cur = thread_current ();
   enum intr_level old_level;
   
@@ -368,13 +362,9 @@ void
 thread_set_priority (int new_priority) 
 {
   thread_current ()->priority = new_priority;
-
-  if (!list_empty(&ready_list)) {
-    struct thread *thread_head = list_entry(list_front(&ready_list), struct thread, elem);
-    if (thread_get_priority() < thread_head->priority) {
-      thread_yield();
-    }
-  }
+  if (!list_empty(&ready_list)
+      && compare_priority(list_head(&ready_list), &thread_current()->elem, NULL))
+    thread_yield();
 }
 
 /* Returns the current thread's priority. */
