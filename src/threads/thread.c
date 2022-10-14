@@ -105,6 +105,7 @@ thread_init (void)
 void
 thread_start (void) 
 {
+
   /* Create the idle thread. */
   struct semaphore idle_started;
   sema_init (&idle_started, 0);
@@ -130,7 +131,7 @@ void
 thread_tick (void) 
 {
   struct thread *t = thread_current ();
-
+  
   /* Update statistics. */
   if (t == idle_thread)
     idle_ticks++;
@@ -252,12 +253,19 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
+
   list_insert_ordered (&ready_list, &t->elem, &compare_priority, NULL);
+
   t->status = THREAD_READY;
   intr_set_level (old_level);
+  if (compare_priority(&t->elem, &thread_current()->elem, NULL)){
+    if (intr_context()){
+      intr_yield_on_return();
+    }else{
+      thread_yield();
+    }
+}
 
-  if (compare_priority(&t->elem, &thread_current()->elem, NULL))
-    thread_yield();
 }
 
 /* Returns the name of the running thread. */
@@ -319,17 +327,21 @@ thread_exit (void)
 void
 thread_yield (void) 
 {
+
   struct thread *cur = thread_current ();
   enum intr_level old_level;
   
   ASSERT (!intr_context ());
 
   old_level = intr_disable ();
-  if (cur != idle_thread) 
+  if (cur != idle_thread) {
     list_insert_ordered (&ready_list, &cur->elem, &compare_priority, NULL);
-  cur->status = THREAD_READY;
-  schedule ();
+    cur->status = THREAD_READY;
+    schedule ();
+  }
+
   intr_set_level (old_level);
+
 }
 
 /* compares priorities of two threads, 
@@ -361,6 +373,7 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
+
   thread_current ()->priority = new_priority;
   if (!list_empty(&ready_list)
       && compare_priority(list_head(&ready_list), &thread_current()->elem, NULL))
