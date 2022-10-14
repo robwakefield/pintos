@@ -254,14 +254,13 @@ thread_unblock (struct thread *t)
   ASSERT (t->status == THREAD_BLOCKED);
   list_insert_ordered (&ready_list, &t->elem, &compare_priority, NULL);
   t->status = THREAD_READY;
+
   intr_set_level (old_level);
 
   if (t->priority > thread_get_priority()) {
     printf("inside if, before yield\n");
     thread_yield();
   }
-
-  printf("outside if\n");
 
 }
 
@@ -339,10 +338,10 @@ thread_yield (void)
 }
 
 /* compares priorities of two threads, 
-returns true if priority of thread A is greate than priority of thread B */
+returns true if priority of thread A is greater than priority of thread B */
 bool compare_priority(const struct list_elem *first, const struct list_elem *second, void *aux UNUSED) {
-  struct thread *thread_a = list_entry(first, struct thread, elem);
-  struct thread *thread_b = list_entry(second, struct thread, elem);
+  const struct thread *thread_a = list_entry(first, struct thread, elem);
+  const struct thread *thread_b = list_entry(second, struct thread, elem);
   return thread_a->priority > thread_b->priority;
 }
 
@@ -367,13 +366,22 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
+  bool yield = false;
   thread_current ()->priority = new_priority;
 
+  enum intr_level old_level = intr_disable ();
+
   if (!list_empty(&ready_list)) {
-    struct thread *thread_head = list_entry(list_front(&ready_list), struct thread, elem);
-    if (thread_get_priority() < thread_head->priority) {
-      thread_yield();
+    struct thread *thread_head = list_entry (list_front(&ready_list), struct thread, elem);
+    if (new_priority < thread_head->priority) {
+      yield = true;
     }
+  }
+
+  intr_set_level (old_level);
+
+  if (yield) {
+    thread_yield();
   }
 }
 
