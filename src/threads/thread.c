@@ -345,9 +345,29 @@ thread_yield (void)
 
 }
 
+void
+donate (struct thread *t, int new_priority) {
+  if (t == NULL)
+    return;
+
+  enum intr_level old_level = intr_disable ();
+  
+  t->donated_priority = new_priority;
+  if (t->status == THREAD_READY) {
+    list_remove(&(t->elem));
+    list_insert_ordered(&ready_list, &(t->elem), &compare_priority, NULL);
+    check_yield(new_priority, true);
+    /* or try list_sort if this implementation fails */
+  }
+
+  intr_set_level (old_level);
+  
+}
+
 /* compares priorities of two threads, 
 returns true if priority of thread A is greater than priority of thread B */
-bool compare_priority(const struct list_elem *first, const struct list_elem *second, void *aux UNUSED) {
+bool 
+compare_priority(const struct list_elem *first, const struct list_elem *second, void *aux UNUSED) {
   const struct thread *thread_a = list_entry(first, struct thread, elem);
   const struct thread *thread_b = list_entry(second, struct thread, elem);
   return thread_a->priority > thread_b->priority;
@@ -374,30 +394,45 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
+  struct thread *curr = thread_current ();
+  curr->priority = new_priority;
+
+  if (check_yield(new_priority, false)) {
+    thread_yield();
+  }
+}
+
+bool
+check_yield (int new_priority, bool donated) 
+{
   bool yield = false;
-  thread_current ()->priority = new_priority;
 
   enum intr_level old_level = intr_disable ();
 
   if (!list_empty(&ready_list)) {
-    struct thread *thread_head = list_entry (list_front(&ready_list), struct thread, elem);
-    if (new_priority < thread_head->priority) {
-      yield = true;
+    struct thread *ready_head = list_entry (list_begin(&ready_list), struct thread, elem);
+    if (!donated) {
+      if (new_priority < ready_head->priority) {
+        yield = true;
+      }
+    } else {
+      if (new_priority > ready_head->priority) {
+        yield = true;
+      }
     }
   }
 
   intr_set_level (old_level);
 
-  if (yield) {
-    thread_yield();
-  }
+  return yield;
 }
 
 /* Returns the current thread's priority. */
 int
 thread_get_priority (void) 
 {
-  return thread_current ()->priority;
+  struct thread *curr = thread_current();
+  return ((curr->priority) > (curr->donated_priority)) ? (curr->priority) : (curr->donated_priority);
 }
 
 /* Sets the current thread's nice value to NICE. */

@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -87,7 +88,9 @@ struct thread
     enum thread_status status;          /* Thread state. */
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
-    int priority;                       /* Priority. */
+    int priority;                       /* Base Priority. */
+    int donated_priority;               /* Donated priority from a higher priority thread */
+    struct lock *waiting_for;           /* Pointer to the lock the thread is waiting on (if any) */
     struct list_elem allelem;           /* List element for all threads list. */
 
     /* Shared between thread.c and synch.c. */
@@ -126,6 +129,7 @@ const char *thread_name (void);
 
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);
+void donate (struct thread *t, int new_priority);
 
 bool compare_priority(const struct list_elem *first, 
                         const struct list_elem *second, void *aux UNUSED);
@@ -136,6 +140,7 @@ void thread_foreach (thread_action_func *, void *);
 
 int thread_get_priority (void);
 void thread_set_priority (int);
+bool check_yield (int new_priority, bool donated);
 
 int thread_get_nice (void);
 void thread_set_nice (int);
