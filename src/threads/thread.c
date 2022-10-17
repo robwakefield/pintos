@@ -352,12 +352,14 @@ donate (struct thread *t, int new_priority) {
 
   enum intr_level old_level = intr_disable ();
   
-  t->donated_priority = new_priority;
+  t->priority = new_priority;
+  printf("inside donate, thread priority changed\n to %d.\n", t->priority);
   if (t->status == THREAD_READY) {
     list_remove(&(t->elem));
-    list_insert_ordered(&ready_list, &(t->elem), &compare_priority, NULL);
-    check_yield(new_priority, true);
-    /* or try list_sort if this implementation fails */
+    //list_insert_ordered(&ready_list, &(t->elem), &compare_priority, NULL);
+    list_push_front(&ready_list, &(t->elem));
+    ASSERT(list_front(&ready_list) == &(t->elem));
+    printf("inside donate if statement, thread re-inserted to the front\n");
   }
 
   intr_set_level (old_level);
@@ -394,37 +396,29 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  struct thread *curr = thread_current ();
-  curr->priority = new_priority;
-
-  if (check_yield(new_priority, false)) {
-    thread_yield();
-  }
-}
-
-bool
-check_yield (int new_priority, bool donated) 
-{
   bool yield = false;
+
+  struct thread *curr = thread_current ();
+  printf("Main thread_get_priority at start of set %d.\n", thread_get_priority ());
+  printf("Main thread->priority at start of set %d.\n", curr->priority);
+  curr->base_priority = new_priority;
 
   enum intr_level old_level = intr_disable ();
 
   if (!list_empty(&ready_list)) {
-    struct thread *ready_head = list_entry (list_begin(&ready_list), struct thread, elem);
-    if (!donated) {
-      if (new_priority < ready_head->priority) {
-        yield = true;
-      }
-    } else {
-      if (new_priority > ready_head->priority) {
-        yield = true;
-      }
+    struct thread *thread_head = list_entry (list_front(&ready_list), struct thread, elem);
+    if (thread_get_priority () < thread_head->priority) {
+      yield = true;
     }
   }
 
   intr_set_level (old_level);
+  printf("Main thread->priority %d.\n", curr->priority);
+  printf("Main thread_get_priority %d.\n", thread_get_priority ());
 
-  return yield;
+  if (yield) {
+    thread_yield();
+  }
 }
 
 /* Returns the current thread's priority. */
@@ -432,7 +426,15 @@ int
 thread_get_priority (void) 
 {
   struct thread *curr = thread_current();
-  return ((curr->priority) > (curr->donated_priority)) ? (curr->priority) : (curr->donated_priority);
+  return ((curr->priority) > (curr->base_priority)) ? (curr->priority) : (curr->base_priority);
+}
+
+void
+thread_revoke_donation (void) 
+{
+  struct thread *curr = thread_current ();
+  curr->priority = curr->base_priority;
+
 }
 
 /* Sets the current thread's nice value to NICE. */
@@ -552,6 +554,7 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+  t->base_priority = priority;              /* keep track of base priority due to donations */
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();
