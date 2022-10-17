@@ -392,6 +392,13 @@ thread_foreach (thread_action_func *func, void *aux)
     }
 }
 
+void donate_priority (struct thread* d, int priority) {
+  enum intr_level old_level = intr_disable();
+  d->priority = priority;
+  list_sort(&ready_list, &compare_priority, NULL);
+  intr_set_level (old_level);
+}
+
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) 

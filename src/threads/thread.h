@@ -138,6 +138,7 @@ bool compare_priority(const struct list_elem *first,
 typedef void thread_action_func (struct thread *t, void *aux);
 void thread_foreach (thread_action_func *, void *);
 
+void donate_priority (struct thread* d, int priority);
 int thread_get_priority (void);
 void thread_set_priority (int);
 void thread_revoke_donation (void);
