@@ -248,8 +248,9 @@ lock_release (struct lock *lock)
 
   lock->holder = NULL;
   sema_up (&lock->semaphore);
-  // TODO: yield correctly
-  thread_yield();
+  // Only yield if the current thread has been donated to
+  if (thread_get_priority () > thread_current ()->base_priority)
+    thread_yield();
 }
 
 /* Returns true if the current thread holds LOCK, false
