@@ -349,15 +349,13 @@ thread_yield (void)
 
 void
 donate (struct thread *t, int new_priority) {
-
-  enum intr_level old_level = intr_disable ();
   
   t->priority = new_priority;
-  // *Sort* the list by removing and inserting back in the correct position
-  list_remove (&(t->elem));
-  list_insert_ordered (&ready_list, &(t->elem), &compare_priority, NULL);
 
-  intr_set_level (old_level);
+  // *Sort* the list by removing and inserting back in the correct position
+  if (t->status == THREAD_READY) {
+    list_resort (&ready_list, &(t->elem), &compare_priority);
+  }
   
 }
 
@@ -368,6 +366,27 @@ compare_priority(const struct list_elem *first, const struct list_elem *second, 
   const struct thread *thread_a = list_entry(first, struct thread, elem);
   const struct thread *thread_b = list_entry(second, struct thread, elem);
   return thread_a->priority > thread_b->priority;
+}
+
+/* compares max priority of two locks, 
+returns true if priority of lock A is greater than priority of lock B */
+bool 
+compare_lock_priority (const struct list_elem *first, const struct list_elem *second, void *aux UNUSED)
+{
+  const struct lock *lock_a = list_entry (first, struct lock, elem);
+  const struct lock *lock_b = list_entry (second, struct lock, elem);
+  return lock_a->max_priority > lock_b->max_priority;
+}
+
+/* Add a lock to the thread's holding locks list. */
+void
+thread_add_lock (struct lock *lock)
+{
+  enum intr_level old_level = intr_disable ();
+
+  list_insert_ordered (&thread_current ()->locks, &(lock->elem), &compare_lock_priority, NULL);
+
+  intr_set_level (old_level);
 }
 
 /* Invoke function 'func' on all threads, passing along 'aux'.
@@ -429,11 +448,34 @@ revoke_donation (struct thread *t)
 {
   if (t->priority == t->base_priority)
     return;
+  
+  int max_priority = t->base_priority;
 
-  t->priority = t->base_priority;
+  enum intr_level old_level = intr_disable ();
+
+  if (!list_empty (&t->locks)) {
+    struct lock *highest_lock = list_entry (list_pop_front (&t->locks), struct lock, elem);
+    max_priority = highest_lock->max_priority;
+  }
+
+  intr_set_level (old_level);
+
+  // change thread's priority to highest priority in locks list only if its higher than base priority
+  t->priority = (max_priority > t->base_priority) ? max_priority : t->base_priority;
+  
   // *Sort* the list by removing and inserting back in the correct position
-  list_remove (&(t->elem));
-  list_insert_ordered (&ready_list, &(t->elem), &compare_priority, NULL);
+  list_resort (&ready_list, &(t->elem), &compare_priority);
+  
+}
+
+void
+list_resort (struct list *list, struct list_elem *elem, list_less_func *less) {
+  enum intr_level old_level = intr_disable ();
+
+  list_remove (elem);
+  list_insert_ordered (list, elem, less, NULL);  
+
+  intr_set_level (old_level);
 }
 
 /* Sets the current thread's nice value to NICE. */

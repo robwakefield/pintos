@@ -200,6 +200,8 @@ lock_acquire (struct lock *lock)
 
   if (lock->holder != NULL && thread_get_priority () > lock->holder->priority) {
     donate(lock->holder, thread_get_priority ());
+    lock->max_priority = thread_get_priority ();
+    list_resort(&lock->holder->locks, lock, &compare_lock_priority);
   }
 
   struct thread *prev = lock->holder;
@@ -208,6 +210,10 @@ lock_acquire (struct lock *lock)
   // Calls thread_block, allowing donated thread to run 
   sema_down (&lock->semaphore);
   lock->holder = thread_current ();
+
+  // Add to the list of thread's locks
+  thread_add_lock (lock);
+
   // Revoke priority if a donation occurred
   if ((prev != NULL) & (prev != lock->holder))
     revoke_donation(prev);
@@ -246,8 +252,16 @@ lock_release (struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
 
+  enum intr_level old_level = intr_disable ();
+
+  struct list_elem *lock_elem_removed = list_pop_front (&(thread_current ()->locks));
+  ASSERT(lock_elem_removed == &(lock->elem));
+
+  intr_set_level (old_level);
+
   lock->holder = NULL;
   sema_up (&lock->semaphore);
+
   // Only yield if the current thread has been donated to
   if (thread_get_priority () > thread_current ()->base_priority)
     thread_yield();
