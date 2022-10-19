@@ -90,7 +90,6 @@ struct thread
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority (Effective Priority) */
     int base_priority;                  /* Base Priority */
-    struct lock *waiting_on;            /* Pointer to the lock the thread is waiting on (if any) */
     struct list_elem allelem;           /* List element for all threads list. */
 
     /* Shared between thread.c and synch.c. */
@@ -132,16 +131,16 @@ void thread_yield (void);
 void donate (struct thread *t, int new_priority);
 
 bool compare_priority(const struct list_elem *first, 
-                        const struct list_elem *second, void *aux UNUSED);
+                      const struct list_elem *second, void *aux UNUSED);
 
 /* Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func (struct thread *t, void *aux);
 void thread_foreach (thread_action_func *, void *);
 
-void donate_priority (struct thread* d, int priority);
+void donate (struct thread* t, int new_priority);
+void revoke_donation (struct thread *t);
 int thread_get_priority (void);
 void thread_set_priority (int);
-void thread_revoke_donation (void);
 
 int thread_get_nice (void);
 void thread_set_nice (int);

@@ -259,11 +259,13 @@ thread_unblock (struct thread *t)
   t->status = THREAD_READY;
 
   intr_set_level (old_level);
-  if (compare_priority(&t->elem, &thread_current()->elem, NULL)){
-    if (intr_context()){
-      intr_yield_on_return();
-    }else{
-      thread_yield();
+
+  // Yield current thread if current thread has lower priority than thread unblocked
+  if (compare_priority (&t->elem, &thread_current ()->elem, NULL)) {
+    if (intr_context ()) {
+      intr_yield_on_return ();
+    } else {
+      thread_yield ();
     }
 }
 
@@ -347,20 +349,13 @@ thread_yield (void)
 
 void
 donate (struct thread *t, int new_priority) {
-  if (t == NULL)
-    return;
 
   enum intr_level old_level = intr_disable ();
   
   t->priority = new_priority;
-  printf("inside donate, thread priority changed\n to %d.\n", t->priority);
-  if (t->status == THREAD_READY) {
-    list_remove(&(t->elem));
-    //list_insert_ordered(&ready_list, &(t->elem), &compare_priority, NULL);
-    list_push_front(&ready_list, &(t->elem));
-    ASSERT(list_front(&ready_list) == &(t->elem));
-    printf("inside donate if statement, thread re-inserted to the front\n");
-  }
+  // *Sort* the list by removing and inserting back in the correct position
+  list_remove (&(t->elem));
+  list_insert_ordered (&ready_list, &(t->elem), &compare_priority, NULL);
 
   intr_set_level (old_level);
   
@@ -392,56 +387,60 @@ thread_foreach (thread_action_func *func, void *aux)
     }
 }
 
-void donate_priority (struct thread* d, int priority) {
-  enum intr_level old_level = intr_disable();
-  d->priority = priority;
-  list_sort(&ready_list, &compare_priority, NULL);
-  intr_set_level (old_level);
-}
-
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) 
 {
-  bool yield = false;
-
   struct thread *curr = thread_current ();
-  printf("Main thread_get_priority at start of set %d.\n", thread_get_priority ());
-  printf("Main thread->priority at start of set %d.\n", curr->priority);
+
+  // if thread is not being donated to then also set current priority to new base
+  if (curr->priority == curr->base_priority)
+    curr->priority = new_priority;
+
   curr->base_priority = new_priority;
 
   enum intr_level old_level = intr_disable ();
-
+  
+  // TODO: if current thread is in ready list this needs to be added
+  // *Sort* the list by removing and inserting back in the correct position
+  //list_remove (&(t->elem));
+  //list_insert_ordered (&ready_list, &(t->elem), &compare_priority, NULL);
+  
+  bool yield = false;
+  // Check if needs to yield now that the priority has changed
+  // TODO: check if the head of the list is the current thread
+  // TODO: in which case: check if the front of the list is this thread
   if (!list_empty(&ready_list)) {
-    struct thread *thread_head = list_entry (list_front(&ready_list), struct thread, elem);
-    if (thread_get_priority () < thread_head->priority) {
+    struct thread *thread_front = list_entry (list_front(&ready_list), struct thread, elem);
+    if (thread_get_priority () < thread_front->priority) {
       yield = true;
     }
   }
 
   intr_set_level (old_level);
-  printf("Main thread->priority %d.\n", curr->priority);
-  printf("Main thread_get_priority %d.\n", thread_get_priority ());
 
-  if (yield) {
+  if (yield) 
     thread_yield();
-  }
+
 }
 
 /* Returns the current thread's priority. */
 int
 thread_get_priority (void) 
 {
-  struct thread *curr = thread_current();
-  return ((curr->priority) > (curr->base_priority)) ? (curr->priority) : (curr->base_priority);
+  return thread_current ()->priority;
 }
 
 void
-thread_revoke_donation (void) 
+revoke_donation (struct thread *t) 
 {
-  struct thread *curr = thread_current ();
-  curr->priority = curr->base_priority;
+  if (t->priority == t->base_priority)
+    return;
 
+  t->priority = t->base_priority;
+  // *Sort* the list by removing and inserting back in the correct position
+  list_remove (&(t->elem));
+  list_insert_ordered (&ready_list, &(t->elem), &compare_priority, NULL);
 }
 
 /* Sets the current thread's nice value to NICE. */

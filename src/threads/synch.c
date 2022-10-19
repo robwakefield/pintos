@@ -68,7 +68,7 @@ sema_down (struct semaphore *sema)
   old_level = intr_disable ();
   while (sema->value == 0) 
     {
-      list_insert_ordered (&sema->waiters, &thread_current ()->elem, &compare_priority, NULL);
+      list_push_back (&sema->waiters, &thread_current ()->elem);
       thread_block ();
     }
   sema->value--;
@@ -197,17 +197,20 @@ lock_acquire (struct lock *lock)
   ASSERT (!lock_held_by_current_thread (lock));
 
   enum intr_level old_level = intr_disable ();
-  struct thread *curr = thread_current ();
 
   if (lock->holder != NULL && thread_get_priority () > lock->holder->priority) {
     donate(lock->holder, thread_get_priority ());
-    curr->waiting_on = lock;
   }
 
+  struct thread *prev = lock->holder;
   intr_set_level (old_level);
-
+  
+  // Calls thread_block, allowing donated thread to run 
   sema_down (&lock->semaphore);
-  lock->holder = curr;
+  lock->holder = thread_current ();
+  // Revoke priority if a donation occurred
+  if ((prev != NULL) & (prev != lock->holder))
+    revoke_donation(prev);
   
 }
 
@@ -244,8 +247,9 @@ lock_release (struct lock *lock)
   ASSERT (lock_held_by_current_thread (lock));
 
   lock->holder = NULL;
-  thread_revoke_donation ();
   sema_up (&lock->semaphore);
+  // TODO: yield correctly
+  thread_yield();
 }
 
 /* Returns true if the current thread holds LOCK, false
