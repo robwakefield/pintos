@@ -401,15 +401,8 @@ thread_set_priority (int new_priority)
 
   enum intr_level old_level = intr_disable ();
   
-  // TODO: if current thread is in ready list this needs to be added
-  // *Sort* the list by removing and inserting back in the correct position
-  //list_remove (&(t->elem));
-  //list_insert_ordered (&ready_list, &(t->elem), &compare_priority, NULL);
-  
   bool yield = false;
   // Check if needs to yield now that the priority has changed
-  // TODO: check if the head of the list is the current thread
-  // TODO: in which case: check if the front of the list is this thread
   if (!list_empty(&ready_list)) {
     struct thread *thread_front = list_entry (list_front(&ready_list), struct thread, elem);
     if (thread_get_priority () < thread_front->priority) {
