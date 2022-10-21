@@ -260,7 +260,7 @@ thread_unblock (struct thread *t)
 
   intr_set_level (old_level);
 
-  // Yield current thread if current thread has lower priority than thread unblocked
+  /* Yield current thread if it has lower priority than thread unblocked. */
   if (compare_priority (&t->elem, &thread_current ()->elem, NULL)) {
     if (intr_context ()) {
       intr_yield_on_return ();
@@ -330,7 +330,6 @@ thread_exit (void)
 void
 thread_yield (void) 
 {
-
   struct thread *cur = thread_current ();
   enum intr_level old_level;
   
@@ -350,13 +349,14 @@ thread_yield (void)
 void
 donate (struct thread *t, int new_priority) {
   
-  t->priority = new_priority;
+  if (new_priority > t->priority)
+    t->priority = new_priority;
 
-  // *Sort* the list by removing and inserting back in the correct position
+  /* Resort the list of ready threads after thread's priority has been changed. */
   if (t->status == THREAD_READY) {
     list_resort (&ready_list, &(t->elem), &compare_priority);
   }
-  
+
 }
 
 /* compares priorities of two threads, 
@@ -389,6 +389,15 @@ thread_add_lock (struct lock *lock)
   intr_set_level (old_level);
 }
 
+void thread_remove_lock (struct lock *lock)
+{
+  enum intr_level old_level = intr_disable ();
+
+  list_remove (&(lock->elem));
+
+  intr_set_level (old_level);
+}
+
 /* Invoke function 'func' on all threads, passing along 'aux'.
    This function must be called with interrupts off. */
 void
@@ -412,28 +421,14 @@ thread_set_priority (int new_priority)
 {
   struct thread *curr = thread_current ();
 
-  // if thread is not being donated to then also set current priority to new base
-  if (curr->priority == curr->base_priority)
-    curr->priority = new_priority;
-
   curr->base_priority = new_priority;
 
-  enum intr_level old_level = intr_disable ();
+  if (new_priority > curr->priority)
+    curr->priority = new_priority;
   
-  bool yield = false;
-  // Check if needs to yield now that the priority has changed
-  if (!list_empty(&ready_list)) {
-    struct thread *thread_front = list_entry (list_front(&ready_list), struct thread, elem);
-    if (thread_get_priority () < thread_front->priority) {
-      yield = true;
-    }
+  if (test_yield ()) {
+    thread_yield ();
   }
-
-  intr_set_level (old_level);
-
-  if (yield) 
-    thread_yield();
-
 }
 
 /* Returns the current thread's priority. */
@@ -449,25 +444,52 @@ revoke_donation (struct thread *t)
   if (t->priority == t->base_priority)
     return;
   
-  int max_priority = t->base_priority;
+  int new_priority;
 
   enum intr_level old_level = intr_disable ();
 
+  /* Check for previous donations to revert to. */
   if (!list_empty (&t->locks)) {
-    struct lock *highest_lock = list_entry (list_pop_front (&t->locks), struct lock, elem);
-    max_priority = highest_lock->max_priority;
+    new_priority = list_entry (list_pop_front (&t->locks), struct lock, elem)->max_priority;
+  } else {
+    new_priority = t->base_priority;
   }
 
   intr_set_level (old_level);
 
-  // change thread's priority to highest priority in locks list only if its higher than base priority
-  t->priority = (max_priority > t->base_priority) ? max_priority : t->base_priority;
+  /* Change thread's priority to previous donation. */
+  t->priority = new_priority;
   
-  // *Sort* the list by removing and inserting back in the correct position
-  list_resort (&ready_list, &(t->elem), &compare_priority);
+  /* Resort ready list. */
+  if (t->status == THREAD_READY)
+    list_resort (&ready_list, &(t->elem), &compare_priority);
+  if (t->status == THREAD_RUNNING) {
+    if (test_yield ())
+      thread_yield ();
+  }
   
 }
 
+bool
+test_yield (void) {
+  enum intr_level old_level = intr_disable ();
+  
+    bool yield = false;
+  
+    /* Check if needs to yield now that the priority has changed. */
+    if (!list_empty(&ready_list)) {
+      struct thread *thread_front = list_entry (list_front(&ready_list), struct thread, elem);
+      if (thread_get_priority () < thread_front->priority) {
+        yield = true;
+      }
+    }
+
+    intr_set_level (old_level);
+
+    return yield;
+}
+
+/* Resort a list after changing priority (for locks and threads). */
 void
 list_resort (struct list *list, struct list_elem *elem, list_less_func *less) {
   enum intr_level old_level = intr_disable ();
@@ -596,6 +618,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->base_priority = priority;              /* keep track of base priority due to donations */
+  list_init(&t->locks);
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();

@@ -139,6 +139,7 @@ bool compare_priority(const struct list_elem *first,
 bool compare_lock_priority (const struct list_elem *first, const struct list_elem *second, void *aux UNUSED);
 
 void thread_add_lock (struct lock *lock);
+void thread_remove_lock (struct lock *lock);
 
 /* Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func (struct thread *t, void *aux);
@@ -146,6 +147,7 @@ void thread_foreach (thread_action_func *, void *);
 
 void donate (struct thread* t, int new_priority);
 void revoke_donation (struct thread *t);
+bool test_yield (void);
 void list_resort (struct list *list, struct list_elem *elem, list_less_func *less);
 int thread_get_priority (void);
 void thread_set_priority (int);
