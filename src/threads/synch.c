@@ -68,7 +68,7 @@ sema_down (struct semaphore *sema)
   old_level = intr_disable ();
   while (sema->value == 0) 
     {
-      list_push_back (&sema->waiters, &thread_current ()->elem);
+      list_insert_ordered (&sema->waiters, &thread_current ()->elem, &compare_priority, NULL);
       thread_block ();
     }
   sema->value--;
@@ -198,26 +198,30 @@ lock_acquire (struct lock *lock)
 
   enum intr_level old_level = intr_disable ();
 
-  if (lock->holder != NULL && thread_get_priority () > lock->holder->priority) {
-    donate(lock->holder, thread_get_priority ());
-    lock->max_priority = thread_get_priority ();
+  int curr_thread_priority = thread_get_priority ();
+
+  if (lock->holder != NULL && curr_thread_priority > lock->holder->priority) {
+    donate(lock->holder, curr_thread_priority);
+    lock->max_priority = curr_thread_priority;
     list_resort(&lock->holder->locks, &lock->elem, &compare_lock_priority);
   }
 
-  struct thread *prev = lock->holder;
+  //struct thread *prev = lock->holder;
   intr_set_level (old_level);
   
-  // Calls thread_block, allowing donated thread to run 
+  /* Calls thread_block, allowing donated thread to run */
   sema_down (&lock->semaphore);
-  lock->holder = thread_current ();
+  struct thread *curr = thread_current ();
+  lock->max_priority = curr->priority;
+  lock->holder = curr;
 
-  // Add to the list of thread's locks
+  /* Add to the list of thread's held locks. */
   thread_add_lock (lock);
 
-  // Revoke priority if a donation occurred
+  /*
   if ((prev != NULL) & (prev != lock->holder))
     revoke_donation(prev);
-
+  */
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -252,19 +256,13 @@ lock_release (struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
 
-  enum intr_level old_level = intr_disable ();
-
-  // Remove this lock from the current threads lock list
-  list_remove (&lock->elem);
-
-  intr_set_level (old_level);
-
+  thread_remove_lock (lock);
   lock->holder = NULL;
   sema_up (&lock->semaphore);
 
-  // Only yield if the current thread has been donated to
-  if (thread_get_priority () > thread_current ()->base_priority)
-    thread_yield();
+  /* Revoke thread donation (if any) */
+  revoke_donation (thread_current ());
+
 }
 
 /* Returns true if the current thread holds LOCK, false
