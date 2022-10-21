@@ -201,7 +201,7 @@ lock_acquire (struct lock *lock)
   if (lock->holder != NULL && thread_get_priority () > lock->holder->priority) {
     donate(lock->holder, thread_get_priority ());
     lock->max_priority = thread_get_priority ();
-    list_resort(&lock->holder->locks, lock, &compare_lock_priority);
+    list_resort(&lock->holder->locks, &lock->elem, &compare_lock_priority);
   }
 
   struct thread *prev = lock->holder;
@@ -217,7 +217,7 @@ lock_acquire (struct lock *lock)
   // Revoke priority if a donation occurred
   if ((prev != NULL) & (prev != lock->holder))
     revoke_donation(prev);
-  
+
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -254,8 +254,8 @@ lock_release (struct lock *lock)
 
   enum intr_level old_level = intr_disable ();
 
-  struct list_elem *lock_elem_removed = list_pop_front (&(thread_current ()->locks));
-  ASSERT(lock_elem_removed == &(lock->elem));
+  // Remove this lock from the current threads lock list
+  list_remove (&lock->elem);
 
   intr_set_level (old_level);
 
