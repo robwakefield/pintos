@@ -420,12 +420,14 @@ void
 thread_set_priority (int new_priority) 
 {
   struct thread *curr = thread_current ();
+  
+  /* If thread is not being donated to, change effective priority as well. */
+  if (curr->base_priority == curr->priority)
+    curr->priority = new_priority;
+  /* what about when new_priority is higher than given donation to a thread? */
 
   curr->base_priority = new_priority;
 
-  if (new_priority > curr->priority)
-    curr->priority = new_priority;
-  
   if (test_yield ()) {
     thread_yield ();
   }
@@ -473,20 +475,19 @@ revoke_donation (struct thread *t)
 bool
 test_yield (void) {
   enum intr_level old_level = intr_disable ();
+  bool yield = false;
   
-    bool yield = false;
-  
-    /* Check if needs to yield now that the priority has changed. */
-    if (!list_empty(&ready_list)) {
-      struct thread *thread_front = list_entry (list_front(&ready_list), struct thread, elem);
-      if (thread_get_priority () < thread_front->priority) {
-        yield = true;
-      }
+  /* Check if needs to yield now that the priority has changed. */
+  if (!list_empty(&ready_list)) {
+    struct thread *thread_front = list_entry (list_front(&ready_list), struct thread, elem);
+    if (thread_get_priority () < thread_front->priority) {
+      yield = true;
     }
+  }
 
-    intr_set_level (old_level);
+  intr_set_level (old_level);
 
-    return yield;
+  return yield;
 }
 
 /* Resort a list after changing priority (for locks and threads). */
@@ -617,10 +618,9 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
-  t->base_priority = priority;              /* keep track of base priority due to donations */
-  list_init(&t->locks);
-  t->magic = THREAD_MAGIC;
+  t->base_priority = priority;            /* keep track of base priority due to donations */
   list_init(&(t->locks));
+  t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
