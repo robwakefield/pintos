@@ -424,7 +424,11 @@ thread_set_priority (int new_priority)
   /* If thread is not being donated to, change effective priority as well. */
   if (curr->base_priority == curr->priority)
     curr->priority = new_priority;
-  /* what about when new_priority is higher than given donation to a thread? */
+  
+  /* The new priority can supersede regardless of current donation */
+  if (new_priority > curr->priority) {
+    curr->priority = new_priority;
+  }
 
   curr->base_priority = new_priority;
 
