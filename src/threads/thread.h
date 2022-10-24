@@ -91,6 +91,8 @@ struct thread
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority (Effective Priority) */
     int base_priority;                  /* Base Priority */
+    int nice;                           // nice value for advanced scheduler
+    int recent_cpu;
     struct list_elem allelem;           /* List element for all threads list. */
 
     struct list locks;                  /* List of locks the thread is currently holding. */
@@ -111,6 +113,17 @@ struct thread
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "mlfqs". */
 extern bool thread_mlfqs;
+
+extern int load_avg;
+
+void increment_recent_cpu(struct thread*);
+void calculate_priority(struct thread*);
+void calculate_recent_cpu(struct thread*);
+void calculate_load_avg(void);
+int fp_int(int);
+int fp(int);
+int fp_division(int, int);
+int fp_multiplication(int, int);
 
 void thread_init (void);
 void thread_start (void);
