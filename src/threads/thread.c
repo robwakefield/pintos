@@ -387,7 +387,7 @@ thread_add_lock (struct lock *lock)
   list_insert_ordered (&thread_current ()->locks, &(lock->elem), &compare_lock_priority, NULL);
   
   if (lock->max_priority > thread_get_priority ())
-    thread_set_priority (lock->max_priority);
+    thread_current ()->priority = lock->max_priority;
 
   intr_set_level (old_level);
 }
@@ -433,9 +433,14 @@ thread_set_priority (int new_priority)
   if (new_priority > curr->priority) {
     curr->priority = new_priority;
   }
+  
+  /* need to also change the priority of the lock this thread is holding if its priority is lowered */
+  // for all locks
+  //  resort semaphore waiters list
 
   /* CHANGE THIS, it doesn't really work, maybe because lock->max_priority is set to the holders priority
-  and not the priority of its highest priority waiter in the semaphore.waiters list */
+  and not the priority of its highest priority waiter in the semaphore.waiters list */ 
+  // ?? make max priority a list and pop off elements as threads stop waiting on the lock/acquire it
   if (!list_empty (&curr->locks)) {
     int prev_donation = list_entry (list_front (&curr->locks), struct lock, elem)->max_priority;
     if (prev_donation > new_priority)

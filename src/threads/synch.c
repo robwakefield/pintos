@@ -204,6 +204,7 @@ lock_acquire (struct lock *lock)
 
   /* Handles nested donations. */
   if (lock->holder != NULL && curr->priority > lock->holder->priority) {
+    /* TODO: what if waiting on multiple locks/ */
     curr->waiting_on = lock;
     temp_lock = lock;
     while (temp_lock != NULL && curr->priority > temp_lock->max_priority) {
@@ -218,9 +219,7 @@ lock_acquire (struct lock *lock)
   
   /* Calls thread_block, allowing donated thread to run */
   sema_down (&lock->semaphore);
-
   curr->waiting_on = NULL;
-  lock->max_priority = curr->priority;
   lock->holder = curr;
 
   /* Add to the list of thread's held locks. */
@@ -264,10 +263,10 @@ lock_release (struct lock *lock)
   lock->holder = NULL;
   sema_up (&lock->semaphore);
 
-  /* Only yield if the current thread has been donated to. */
-  if (thread_get_priority () > thread_current ()->base_priority)
-    thread_yield();
-
+  /* revert lock max_p to next in waiters */
+  if (!list_empty (&(lock->semaphore.waiters)))
+    lock->max_priority = list_entry (list_front (&(lock->semaphore.waiters)), struct thread, elem)->priority;
+  
   /* Revoke thread donation (if any) */
   revoke_donation (thread_current ());
 
