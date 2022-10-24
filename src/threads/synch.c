@@ -204,7 +204,6 @@ lock_acquire (struct lock *lock)
 
   /* Handles nested donations. */
   if (lock->holder != NULL && curr->priority > lock->holder->priority) {
-    /* TODO: what if waiting on multiple locks/ */
     curr->waiting_on = lock;
     temp_lock = lock;
     while (temp_lock != NULL && curr->priority > temp_lock->max_priority) {
