@@ -260,7 +260,7 @@ thread_unblock (struct thread *t)
 
   intr_set_level (old_level);
 
-  /* Yield current thread if it has lower priority than thread unblocked. */
+  /* Yield current thread if unblocked thread has higher priority. */
   if (compare_priority (&t->elem, &thread_current ()->elem, NULL)) {
     if (intr_context ()) {
       intr_yield_on_return ();
@@ -348,7 +348,7 @@ thread_yield (void)
 
 void
 donate (struct thread *t, int new_priority) {
-  
+  /* Change thread's effective priority to donated priority. */
   if (new_priority > t->priority)
     t->priority = new_priority;
 
@@ -359,7 +359,7 @@ donate (struct thread *t, int new_priority) {
 
 }
 
-/* compares priorities of two threads, 
+/* Compares priorities of two threads, 
 returns true if priority of thread A is greater than priority of thread B */
 bool 
 compare_priority(const struct list_elem *first, const struct list_elem *second, void *aux UNUSED) {
@@ -368,7 +368,7 @@ compare_priority(const struct list_elem *first, const struct list_elem *second, 
   return thread_a->priority > thread_b->priority;
 }
 
-/* compares max priority of two locks, 
+/* Compares max priority of two locks, 
 returns true if priority of lock A is greater than priority of lock B */
 bool 
 compare_lock_priority (const struct list_elem *first, const struct list_elem *second, void *aux UNUSED)
@@ -385,6 +385,9 @@ thread_add_lock (struct lock *lock)
   enum intr_level old_level = intr_disable ();
 
   list_insert_ordered (&thread_current ()->locks, &(lock->elem), &compare_lock_priority, NULL);
+  
+  if (lock->max_priority > thread_get_priority ())
+    thread_set_priority (lock->max_priority);
 
   intr_set_level (old_level);
 }
@@ -396,6 +399,7 @@ void thread_remove_lock (struct lock *lock)
   list_remove (&(lock->elem));
 
   intr_set_level (old_level);
+
 }
 
 /* Invoke function 'func' on all threads, passing along 'aux'.
@@ -420,18 +424,28 @@ void
 thread_set_priority (int new_priority) 
 {
   struct thread *curr = thread_current ();
-  
+
   /* If thread is not being donated to, change effective priority as well. */
   if (curr->base_priority == curr->priority)
     curr->priority = new_priority;
   
-  /* The new priority can supersede regardless of current donation */
+  /* New priority can supersede regardless of current donations. */
   if (new_priority > curr->priority) {
     curr->priority = new_priority;
   }
 
+  /* CHANGE THIS, it doesn't really work, maybe because lock->max_priority is set to the holders priority
+  and not the priority of its highest priority waiter in the semaphore.waiters list */
+  if (!list_empty (&curr->locks)) {
+    int prev_donation = list_entry (list_front (&curr->locks), struct lock, elem)->max_priority;
+    if (prev_donation > new_priority)
+      curr->priority = prev_donation;
+  } 
+
+  /* Change thread's base priority. */
   curr->base_priority = new_priority;
 
+  /* Yield if head of the thread ready list has higher priority. */
   if (test_yield ()) {
     thread_yield ();
   }
@@ -444,6 +458,7 @@ thread_get_priority (void)
   return thread_current ()->priority;
 }
 
+/* Revokes most recent donation to a thread (called in lock_release). */
 void
 revoke_donation (struct thread *t) 
 {
@@ -463,13 +478,14 @@ revoke_donation (struct thread *t)
 
   intr_set_level (old_level);
 
-  /* Change thread's priority to previous donation. */
+  /* Change thread's effective priority to previous donation or base priority). */
   t->priority = new_priority;
   
   /* Resort ready list. */
   if (t->status == THREAD_READY)
     list_resort (&ready_list, &(t->elem), &compare_priority);
   if (t->status == THREAD_RUNNING) {
+    /* Check if thread should yield the CPU. */
     if (test_yield ())
       thread_yield ();
   }
@@ -481,7 +497,7 @@ test_yield (void) {
   enum intr_level old_level = intr_disable ();
   bool yield = false;
   
-  /* Check if needs to yield now that the priority has changed. */
+  /* Check if thread needs to yield to the highest priority ready thread. */
   if (!list_empty(&ready_list)) {
     struct thread *thread_front = list_entry (list_front(&ready_list), struct thread, elem);
     if (thread_get_priority () < thread_front->priority) {

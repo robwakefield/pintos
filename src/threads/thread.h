@@ -93,6 +93,7 @@ struct thread
     int base_priority;                  /* Base Priority */
     struct list_elem allelem;           /* List element for all threads list. */
 
+    struct lock *waiting_on;             /* The lock currently blocking the thread. */
     struct list locks;                  /* List of locks the thread is currently holding. */
 
     /* Shared between thread.c and synch.c. */
