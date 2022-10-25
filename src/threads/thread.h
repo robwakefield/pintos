@@ -134,9 +134,7 @@ void thread_exit (void) NO_RETURN;
 void thread_yield (void);
 void donate (struct thread *t, int new_priority);
 
-bool compare_priority(const struct list_elem *first, 
-                      const struct list_elem *second, void *aux UNUSED);
-
+bool compare_priority(const struct list_elem *first, const struct list_elem *second, void *aux UNUSED);
 bool compare_lock_priority (const struct list_elem *first, const struct list_elem *second, void *aux UNUSED);
 
 void thread_add_lock (struct lock *lock);
