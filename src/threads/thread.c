@@ -96,11 +96,8 @@ thread_init (void)
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
-  if(thread_mlfqs){
-    init_thread (initial_thread, "main", 0);
-  }else{
-    init_thread (initial_thread, "main", PRI_DEFAULT);
-  }
+  init_thread (initial_thread, "main", PRI_DEFAULT);
+  
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
 }
@@ -194,11 +191,9 @@ thread_create (const char *name, int priority,
     return TID_ERROR;
 
   /* Initialize thread. */
-  if(thread_mlfqs){
-    init_thread (t, name, thread_current()->nice);
-  }else{
-    init_thread (t, name, priority);
-  }
+  
+  init_thread (t, name, priority);
+  
   
   tid = t->tid = allocate_tid ();
 
@@ -528,7 +523,7 @@ int fp_multiplication(int a, int b){
 }
 
 int fp_division(int a, int b){
-  return (((int64_t) a) << 14) * b;
+  return (((int64_t) a) << 14) / b;
 }
 
 int fp(int a){
@@ -546,12 +541,9 @@ int fp_int(int a){
 }
 
 void calculate_load_avg(){ 
-  int i = 1;
-  if (!running_thread()->status == THREAD_RUNNING){
-    
-    i = 0;
-  }else if(thread_current() == idle_thread){
-    i = 0;
+  int i = 0;
+  if(thread_current() != idle_thread){
+    i = 1;
   }
   load_avg = fp_multiplication(16110,load_avg) + ((273) * (threads_ready() + i)); 
 
@@ -560,28 +552,38 @@ void calculate_load_avg(){
 }
 
 void calculate_recent_cpu(struct thread *t){
-  printf("ITSHOULDWORK %d\n",fp_division((2*load_avg),(2*load_avg + fp(1))));
   t->recent_cpu = fp_multiplication(fp_division((2*load_avg),(2*load_avg + fp(1))),t->recent_cpu) + fp(t->nice);
 }
 
 void calculate_priority(struct thread *t){
+  int prio;
   if(running_thread() != idle_thread){
-    t->priority = PRI_MAX - fp_int(t->recent_cpu/4) - (t->nice*2);
+     prio = PRI_MAX - fp_int(t->recent_cpu/4) - (t->nice*2);
   }
+  if (prio > PRI_MAX){ 
+    prio = PRI_MAX;
+  }else if(prio < PRI_MIN){
+    prio = PRI_MIN;
+  }
+  t->priority = prio;
 }
 
-void increment_recent_cpu(struct thread *t){
-  t->recent_cpu += 1<<14;
+void increment_recent_cpu(){
+  if(thread_current() != idle_thread){
+    thread_current()->recent_cpu += fp(1);
+  }
 }
 
 void update_on_second(){
   calculate_load_avg();
-  printf("load_average: %d\n",fp_int(load_avg*100));
+  /*struct thread *t;
   for (struct list_elem *e = list_begin (&all_list); e != list_end (&all_list); e = list_next (e)){
-    struct thread *t = list_entry(e,struct thread,elem);
-    calculate_recent_cpu(t);
-    //calculate_priority(t);
-  }
+    t = list_entry(e,struct thread,allelem);
+    if(t != idle_thread){
+      calculate_recent_cpu(t);
+      calculate_priority(t);
+    }
+  }*/
 }
 
 /* Sets the current thread's nice value to NICE. */
@@ -707,7 +709,8 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->base_priority = priority; /* keep track of base priority due to donations */
-  t->nice = priority;
+  t->nice = 0;
+  t->nice = running_thread()->nice;
   t->recent_cpu = 0;
   
   

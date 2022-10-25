@@ -222,9 +222,8 @@ timer_interrupt (struct intr_frame *args UNUSED)
     }
   }
 
-  ASSERT(thread_current()->status == THREAD_RUNNING);
   if(thread_mlfqs){
-    increment_recent_cpu(thread_current());
+    increment_recent_cpu();
     if (timer_ticks () % TIMER_FREQ == 0){
       update_on_second();
     }
