@@ -11,6 +11,7 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "threads/fixed-point.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -518,54 +519,29 @@ list_resort (struct list *list, struct list_elem *elem, list_less_func *less) {
   intr_set_level (old_level);
 }
 
-int fp_multiplication(int a, int b){
-  return (((int64_t) a) * b )>> 14;
-}
-
-int fp_division(int a, int b){
-  return (((int64_t) a) << 14) / b;
-}
-
-int fp(int a){
-  return a << 14;
-}
-
-int fp_int(int a){
-  if (a>=0){
-    a = (a + (1<<13));
-  }else{
-    a = (a - (1<<13));
-  }
-  return ((signed int) a)>>14;
-  
-}
-
 void calculate_load_avg(){ 
-  int i = 0;
-  if(thread_current() != idle_thread){
-    i = 1;
-  }
+  int i = thread_current() != idle_thread;
   load_avg = fp_multiplication(16110,load_avg) + ((273) * (threads_ready() + i)); 
 
   
   //16110 represents 59/60 in 17.14 273 represents 1/60 in 17.14
 }
 
-void calculate_recent_cpu(struct thread *t){
-  t->recent_cpu = fp_multiplication(fp_division((2*load_avg),(2*load_avg + fp(1))),t->recent_cpu) + fp(t->nice);
+void calculate_recent_cpu (struct thread *t) {
+  t->recent_cpu = fp_multiplication (fp_division ((2*load_avg), (2*load_avg + fp (1))), t->recent_cpu) + fp (t->nice);
 }
 
-void calculate_priority(struct thread *t){
-  int prio;
-  if(running_thread() != idle_thread){
-     prio = PRI_MAX - fp_int(t->recent_cpu/4) - (t->nice*2);
+void calculate_priority (struct thread *t) {
+  int priority;
+  if(running_thread () != idle_thread){
+     priority = PRI_MAX - fp_int (t->recent_cpu/4) - (t->nice*2);
   }
-  if (prio > PRI_MAX){ 
-    prio = PRI_MAX;
-  }else if(prio < PRI_MIN){
-    prio = PRI_MIN;
+  if (priority > PRI_MAX){ 
+    priority = PRI_MAX;
+  } else if (priority < PRI_MIN){
+    priority = PRI_MIN;
   }
-  t->priority = prio;
+  t->priority = priority;
 }
 
 void increment_recent_cpu(){
@@ -595,7 +571,6 @@ thread_set_nice (int nice )
   calculate_priority(thread_current());
   intr_set_level(old_level);
 
-
 }
 
 /* Returns the current thread's nice value. */
@@ -609,17 +584,14 @@ thread_get_nice (void)
 int
 thread_get_load_avg (void) 
 {
-  
-  return fp_int(load_avg * 100);
-  
+  return fp_int (load_avg * 100);
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) 
 {
-  
-  return fp_int(thread_current()->recent_cpu * 100);
+  return fp_int (thread_current ()->recent_cpu * 100);
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
