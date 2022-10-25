@@ -351,7 +351,7 @@ donate (struct thread *t, int new_priority) {
   /* Change thread's effective priority to donated priority. */
   if (new_priority > t->priority)
     t->priority = new_priority;
-
+  
   /* Resort the list of ready threads after thread's priority has been changed. */
   if (t->status == THREAD_READY) {
     list_resort (&ready_list, &(t->elem), &compare_priority);
@@ -385,9 +385,6 @@ thread_add_lock (struct lock *lock)
   enum intr_level old_level = intr_disable ();
 
   list_insert_ordered (&thread_current ()->locks, &(lock->elem), &compare_lock_priority, NULL);
-  
-  if (lock->max_priority > thread_get_priority ())
-    thread_set_priority (lock->max_priority);
 
   intr_set_level (old_level);
 }

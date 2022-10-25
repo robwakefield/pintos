@@ -120,6 +120,7 @@ sema_up (struct semaphore *sema)
     list_sort(&sema->waiters, &compare_priority, NULL);
     thread_unblock (list_entry (list_pop_front (&sema->waiters),
                                 struct thread, elem));
+  
   }
   
   intr_set_level (old_level);
@@ -267,10 +268,10 @@ lock_release (struct lock *lock)
   lock->holder = NULL;
   sema_up (&lock->semaphore);
 
-  /* revert lock max_p to next in waiters */
+  /* Revert lock max_priority to highest priority in waiters list. */
   if (!list_empty (&(lock->semaphore.waiters)))
     lock->max_priority = list_entry (list_front (&(lock->semaphore.waiters)), struct thread, elem)->priority;
-  
+
   /* Revoke thread donation (if any) */
   revoke_donation (thread_current ());
 
