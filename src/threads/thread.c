@@ -368,16 +368,6 @@ compare_priority(const struct list_elem *first, const struct list_elem *second, 
   return thread_a->priority > thread_b->priority;
 }
 
-/* Compares max priority of two locks, 
-returns true if priority of lock A is greater than priority of lock B */
-bool 
-compare_lock_priority (const struct list_elem *first, const struct list_elem *second, void *aux UNUSED)
-{
-  const struct lock *lock_a = list_entry (first, struct lock, elem);
-  const struct lock *lock_b = list_entry (second, struct lock, elem);
-  return lock_a->max_priority > lock_b->max_priority;
-}
-
 /* Add a lock to the thread's holding locks list. */
 void
 thread_add_lock (struct lock *lock)

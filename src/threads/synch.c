@@ -188,6 +188,16 @@ lock_init (struct lock *lock)
   sema_init (&lock->semaphore, 1);
 }
 
+/* Compares max priority of two locks, 
+returns true if priority of lock A is greater than priority of lock B */
+bool 
+compare_lock_priority (const struct list_elem *first, const struct list_elem *second, void *aux UNUSED)
+{
+  const struct lock *lock_a = list_entry (first, struct lock, elem);
+  const struct lock *lock_b = list_entry (second, struct lock, elem);
+  return lock_a->max_priority > lock_b->max_priority;
+}
+
 /* Acquires LOCK, sleeping until it becomes available if
    necessary.  The lock must not already be held by the current
    thread.

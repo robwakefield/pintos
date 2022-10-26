@@ -29,6 +29,7 @@ struct lock
   };
 
 void lock_init (struct lock *);
+bool compare_lock_priority (const struct list_elem *first, const struct list_elem *second, void *aux UNUSED);
 void lock_acquire (struct lock *);
 bool lock_try_acquire (struct lock *);
 void lock_release (struct lock *);
