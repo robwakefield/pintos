@@ -116,14 +116,9 @@ extern bool thread_mlfqs;
 
 extern int load_avg;
 
-void increment_recent_cpu(void);
 void calculate_priority(struct thread*);
 void calculate_recent_cpu(struct thread*);
 void calculate_load_avg(void);
-int fp_int(int);
-int fp(int);
-int fp_division(int, int);
-int fp_multiplication(int, int);
 
 void thread_init (void);
 void thread_start (void);
@@ -151,6 +146,7 @@ bool compare_priority(const struct list_elem *first,
 
 bool compare_lock_priority (const struct list_elem *first, const struct list_elem *second, void *aux UNUSED);
 
+void add_to_ready_list (struct thread *t);
 void thread_add_lock (struct lock *lock);
 void thread_remove_lock (struct lock *lock);
 
