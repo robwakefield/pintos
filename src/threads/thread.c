@@ -291,7 +291,7 @@ thread_unblock (struct thread *t)
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
 
-  add_to_ready_list (t);
+  list_insert_ordered (&ready_list, &t->elem, &compare_priority, NULL);
 
   t->status = THREAD_READY;
 
@@ -374,7 +374,7 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) {
-    add_to_ready_list (cur);
+    list_insert_ordered (&ready_list, &cur->elem, &compare_priority, NULL);
     cur->status = THREAD_READY;
     schedule ();
   }
@@ -537,14 +537,6 @@ test_yield (void) {
   intr_set_level (old_level);
 
   return yield;
-}
-
-void
-add_to_ready_list (struct thread *t) {
-  enum intr_level old_level = intr_disable ();
-  list_insert_ordered (&ready_list, &t->elem, &compare_priority, NULL);
-  intr_set_level (old_level);
-
 }
 
 /* Resort a list after changing priority (for locks and threads). */
