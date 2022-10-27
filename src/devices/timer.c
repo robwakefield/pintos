@@ -103,7 +103,7 @@ timer_sleep (int64_t ticks)
 {
   if(ticks <= 0)
     return;
-  
+
   int64_t start = timer_ticks (); /* timer ticks in OS uptil timer_sleep was called */
   ASSERT (intr_get_level () == INTR_ON); /* checks if interrupts are on */
   
@@ -207,6 +207,7 @@ timer_print_stats (void)
 static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
+  thread_tick();
   ticks++;
 
   /* traverse the sleep_list and check if any threads need to wake up */
@@ -221,15 +222,6 @@ timer_interrupt (struct intr_frame *args UNUSED)
       break;
     }
   }
-
-  if(thread_mlfqs){
-    increment_recent_cpu();
-    if (timer_ticks () % TIMER_FREQ == 0){
-      update_on_second();
-    }
-  }
-
-  thread_tick ();
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
