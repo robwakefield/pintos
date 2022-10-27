@@ -207,7 +207,6 @@ timer_print_stats (void)
 static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
-  thread_tick();
   ticks++;
 
   /* traverse the sleep_list and check if any threads need to wake up */
@@ -222,6 +221,8 @@ timer_interrupt (struct intr_frame *args UNUSED)
       break;
     }
   }
+  thread_tick();
+
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

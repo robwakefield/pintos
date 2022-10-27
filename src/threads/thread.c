@@ -61,7 +61,6 @@ static unsigned thread_ticks;   /* # of timer ticks since last yield. */
    Controlled by kernel command-line option "-mlfqs". */
 bool thread_mlfqs;
 int load_avg = 0;
-int ready_threads = 0;
 
 static void kernel_thread (thread_func *, void *aux);
 
@@ -150,7 +149,21 @@ thread_tick (void)
     /* Update priority for all threads every 4 ticks */
     if (timer_ticks () % 4 == 0 || timer_ticks () % TIMER_FREQ == 0) {
       thread_foreach (calculate_priority, NULL);
-    }
+      
+      bool yield = false;
+      enum intr_level old_level = intr_disable();
+
+      /* Yield if current thread no longer has highest priority */
+      if (!list_empty (&ready_list)) {
+        struct thread *front = list_entry (list_front (&ready_list), struct thread, elem);
+        if (front->priority > t->priority)
+          yield = true;
+      }
+
+      intr_set_level(old_level);
+      if (yield)
+        thread_yield();
+      }
   }
 
   /* Update statistics. */
@@ -530,7 +543,6 @@ void
 add_to_ready_list (struct thread *t) {
   enum intr_level old_level = intr_disable ();
   list_insert_ordered (&ready_list, &t->elem, &compare_priority, NULL);
-  ready_threads++;
   intr_set_level (old_level);
 
 }
@@ -773,7 +785,6 @@ next_thread_to_run (void)
   if (list_empty (&ready_list)) {
     return idle_thread;
   } else {
-    ready_threads--;
     return list_entry (list_pop_front (&ready_list), struct thread, elem);
   }
 }
