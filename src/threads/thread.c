@@ -550,10 +550,10 @@ void calculate_load_avg () {
   int i = thread_current() != idle_thread;
   load_avg = FP_ADD (
               FP_MUL (
-                FP_DIV (FP (59), FP (60)), 
+                FP_DIV (FP (59), FP (60)),
                 load_avg), 
               FP_MUL (
-                FP_DIV (FP (1), FP (60)), 
+                FP_DIV (FP (1), FP (60)),
                 FP (threads_ready() + i))
               ); 
 
@@ -575,7 +575,7 @@ void calculate_recent_cpu (struct thread *t) {
                     FP_MUL(
                       coefficient,
                       t->recent_cpu), 
-                    t->nice);
+                    FP (t->nice));
 
 }
 
@@ -591,7 +591,7 @@ void calculate_priority (struct thread *t) {
                         FP (4))
                       ), 
                     FP_MUL (
-                      t->nice, 
+                      FP (t->nice), 
                       FP (2))
                     ));
   }
@@ -610,6 +610,7 @@ thread_set_nice (int nice )
   thread_current()->nice = nice;
   bool yield = false;
   enum intr_level old_level = intr_disable();
+
   calculate_priority(thread_current());
 
   /* Yield if current thread no longer has highest priority */
