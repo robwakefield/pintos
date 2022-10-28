@@ -161,9 +161,14 @@ thread_tick (void)
       }
 
       intr_set_level(old_level);
-      if (yield)
-        thread_yield();
+      if (yield) {
+        if (intr_context ()) {
+          intr_yield_on_return ();
+        } else {
+          thread_yield();
+        }
       }
+    }
   }
 
   /* Update statistics. */
