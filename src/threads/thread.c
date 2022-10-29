@@ -126,7 +126,6 @@ thread_start (void)
 size_t
 threads_ready (void)
 {
-  //TODO: change implementation to use a threads_ready variable so it is quicker
   return list_size (&ready_list);
 }
 
