@@ -9,9 +9,11 @@ struct semaphore
   {
     unsigned value;             /* Current value. */
     struct list waiters;        /* List of waiting threads. */
+    int priority;               
   };
 
 void sema_init (struct semaphore *, unsigned value);
+//bool compare_sema_priority (const struct list_elem *first, const struct list_elem *second, void *aux UNUSED);
 void sema_down (struct semaphore *);
 bool sema_try_down (struct semaphore *);
 void sema_up (struct semaphore *);
@@ -27,6 +29,7 @@ struct lock
   };
 
 void lock_init (struct lock *);
+bool compare_lock_priority (const struct list_elem *first, const struct list_elem *second, void *aux UNUSED);
 void lock_acquire (struct lock *);
 bool lock_try_acquire (struct lock *);
 void lock_release (struct lock *);

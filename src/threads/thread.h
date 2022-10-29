@@ -95,6 +95,7 @@ struct thread
     int recent_cpu;
     struct list_elem allelem;           /* List element for all threads list. */
 
+    struct lock *waiting_on;             /* The lock currently blocking the thread. */
     struct list locks;                  /* List of locks the thread is currently holding. */
 
     /* Shared between thread.c and synch.c. */
@@ -141,10 +142,7 @@ void thread_exit (void) NO_RETURN;
 void thread_yield (void);
 void donate (struct thread *t, int new_priority);
 
-bool compare_priority(const struct list_elem *first, 
-                      const struct list_elem *second, void *aux UNUSED);
-
-bool compare_lock_priority (const struct list_elem *first, const struct list_elem *second, void *aux UNUSED);
+bool compare_priority(const struct list_elem *first, const struct list_elem *second, void *aux UNUSED);
 
 void add_to_ready_list (struct thread *t);
 void thread_add_lock (struct lock *lock);
