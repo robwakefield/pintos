@@ -466,6 +466,8 @@ thread_set_priority (int new_priority)
   if (new_priority > curr->priority) {
     curr->priority = new_priority;
   }
+
+  enum intr_level old_level = intr_disable ();
   
   if (!list_empty (&curr->locks)) {
     int prev_donation = list_entry (list_front (&curr->locks), struct lock, elem)->max_priority;
@@ -473,6 +475,8 @@ thread_set_priority (int new_priority)
       curr->priority = prev_donation;
   } 
 
+  intr_set_level (old_level);
+  
   /* Change thread's base priority. */
   curr->base_priority = new_priority;
 
