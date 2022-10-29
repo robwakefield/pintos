@@ -103,7 +103,7 @@ timer_sleep (int64_t ticks)
 {
   if(ticks <= 0)
     return;
-  
+
   int64_t start = timer_ticks (); /* timer ticks in OS uptil timer_sleep was called */
   ASSERT (intr_get_level () == INTR_ON); /* checks if interrupts are on */
   
@@ -221,8 +221,8 @@ timer_interrupt (struct intr_frame *args UNUSED)
       break;
     }
   }
-  
-  thread_tick ();
+  thread_tick();
+
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
