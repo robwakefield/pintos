@@ -753,6 +753,7 @@ init_thread (struct thread *t, const char *name, int priority)
 
   old_level = intr_disable ();
 
+  if (thread_mlfqs)
   calculate_priority(t);
   
   list_push_back (&all_list, &t->allelem);
