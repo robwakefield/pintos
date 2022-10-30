@@ -495,8 +495,9 @@ thread_get_priority (void)
 
 /* Revokes most recent donation to a thread (called in lock_release). */
 void
-revoke_donation (struct thread *t) 
+revoke_donation () 
 {
+  struct thread *t = thread_current ();
   if(thread_mlfqs){
     return;
   }

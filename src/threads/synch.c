@@ -219,14 +219,16 @@ lock_acquire (struct lock *lock)
   enum intr_level old_level = intr_disable ();
 
   /* Handles nested donations. */
-  if (lock->holder != NULL && curr->priority > lock->holder->priority) {
-    curr->waiting_on = lock;
-    temp_lock = lock;
-    while (temp_lock != NULL && curr->priority > temp_lock->max_priority) {
-      temp_lock->max_priority = curr->priority;
-      list_resort(&lock->holder->locks, &lock->elem, &compare_lock_priority);
-      donate (temp_lock->holder, curr->priority);
-      temp_lock = temp_lock->holder->waiting_on;
+  if(!thread_mlfqs){
+    if (lock->holder != NULL && curr->priority > lock->holder->priority) {
+      curr->waiting_on = lock;
+      temp_lock = lock;
+      while (temp_lock != NULL && curr->priority > temp_lock->max_priority) {
+        temp_lock->max_priority = curr->priority;
+        list_resort(&lock->holder->locks, &lock->elem, &compare_lock_priority);
+        donate (temp_lock->holder, curr->priority);
+        temp_lock = temp_lock->holder->waiting_on;
+      }
     }
   }
 
@@ -283,7 +285,7 @@ lock_release (struct lock *lock)
     lock->max_priority = list_entry (list_front (&(lock->semaphore.waiters)), struct thread, elem)->priority;
 
   /* Revoke thread donation (if any) */
-  revoke_donation (thread_current ());
+  revoke_donation ();
 
 }
 
