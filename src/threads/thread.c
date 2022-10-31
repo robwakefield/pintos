@@ -632,22 +632,12 @@ void
 thread_set_nice (int nice ) 
 {
   thread_current()->nice = nice;
-  bool yield = false;
 
   enum intr_level old_level = intr_disable();
-
   calculate_priority(thread_current(), NULL);
-
-  /* Yield if current thread no longer has highest priority */
-  if (!list_empty (&ready_list)) {
-    struct thread *front = list_entry (list_front (&ready_list), struct thread, elem);
-    if (front->priority > thread_current ()->priority)
-      yield = true;
-  }
-
   intr_set_level(old_level);
   
-  if (yield)
+  if (test_yield())
     thread_yield();
 }
 
