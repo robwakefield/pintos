@@ -153,7 +153,7 @@ typedef void thread_action_func (struct thread *t, void *aux);
 void thread_foreach (thread_action_func *, void *);
 
 void donate (struct thread* t, int new_priority);
-void revoke_donation (struct thread *t);
+void revoke_donation (void);
 bool test_yield (void);
 void list_resort (struct list *list, struct list_elem *elem, list_less_func *less);
 int thread_get_priority (void);
