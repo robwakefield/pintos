@@ -9,10 +9,9 @@
 /* structure for element of the sleeping threads list */
 struct sleep_list_elem {
   struct semaphore *thread_sema; /* to unblock a sleeping thread */
-  struct thread *sleep_thread; /* sleeping (current) thread */
 
-  int64_t sleep_for_ticks; /* number of ticks to wake up after */
-  struct list_elem elem;
+  int64_t wake_up_time;      /* Stores wake up time for sleeping thread. */
+  struct list_elem elem;     /* List element to store sema of sleeping thread in sleep list*/
 };
 
 /* Number of timer interrupts per second. */
