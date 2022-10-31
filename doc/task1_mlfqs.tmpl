@@ -8,9 +8,9 @@
 
 >> Fill in the names and email addresses of your group members.
 
-FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
+Robert Wakefield <rgw20@ic.ac.uk>
+Nada Struharova <ns2321@ic.ac.uk>
+Harrison Barker <hb321@ic.ac.uk>
 
 ---- PRELIMINARIES ----
 
@@ -62,7 +62,7 @@ Added to struct lock:
  |  H  <---+   |  M  <---+   |  L  |       as shown in the diagram. In this case, a nested donation is required.
  +-----+       +-----+       +-----+
 
-
+When a high-priority thread H is blocked waiting on a lock currently held by a lower-priority thread M a donation occurs. However, thread M might also be blocked on some other lock, as shown in the diagram. In this case, a nested donation is required.
 
                  +-+           +-+
                 ++-++         ++-++       Thread H checks if the holder of lock 1 has lower priority.
@@ -77,6 +77,7 @@ Added to struct lock:
     |             |
     +---donates---+
 
+Thread H checks if the holder of lock 1 has lower priority. If so, thread H donates its high priority to the lock holder. After the donation is finished, it is checked whether the thread receiving a donation is also not blocked on a resource.
 
                  +-+           +-+
                 ++-++         ++-++
@@ -93,6 +94,8 @@ Added to struct lock:
                                           by a lock is reached.
 
 
+If it is blocked on a lock, the donation process is repeated - check if the lock holder is of lower priority and donate if necessary. However, this nested donation now passes around the original donated priority H, the first donated priority inside the loop. The check loop is repeated until a thread is not blocked by a lock is reached.
+
                  +-+           +-+
                 ++-++         ++-++
            +----+ 1 |     +---> 2 |      Once the nested donation is done, we can wait for the individual threads
@@ -106,17 +109,20 @@ Added to struct lock:
     |             |
     +---donates---+
 
+Once the nested donation is done, we can wait for the individual thread to release the locks. When one of the threads forming the nested donation releases its lock, and the lock is acquired by the highest-priority waiter and the donation is revoked.
 
                  +-+           +-+
                 ++-++         ++-++
            +----> 1 |         | 2 |     This process is also repeated until the original
            |    +---+         +---+
-           |                            donating thread acquires desired lock.
+           |                            donating thread acquires the desired lock.
            |
            |
  +-----+   |   +-----+       +-----+
  |  H  +---+   |  M  |       |  L  |
  +-----+       +-----+       +-----+
+
+This process is also repeated until the original donating thread acquires the desired lock.
 
 ---- ALGORITHMS ----
 
@@ -144,7 +150,7 @@ A call to lock_acquire() causes a priority donation by calling the method donate
 >> Describe the sequence of events when lock_release() is called on a lock that 
 >> a higher-priority thread is waiting for.
 
-Once lock L is released, it is removed from the holder thread B's held locks list and L's holder is set to NULL. The semaphore of lock L is upped to unblock the highest priority thread in its waiters list, which will be thread A. Thread B still operates with the donated priority so as to finish releasing the lock and not yield the CPU at an undesirable moment. Lock L's max_prioirity field is updated to the priority of the highest priority thread in the semaphore's waiters list. Thread B's donation is revoked. This is done in a call to revoke_donation() method, which reverts the effective priority of thread B to its base priority or any previous donations thread B received. The ready list is re-sorted and the thread yields the CPU, if necessary after effective priority change.
+Once lock L is released, it is removed from the holder thread B's held locks list and L's holder is set to NULL. The semaphore of lock L is upped to unblock the highest priority thread in its waiters list, which will be thread A. Thread B still operates with the donated priority so as to finish releasing the lock and not yield the CPU at an undesirable moment. Lock L's max_priority field is updated to the priority of the highest priority thread in the semaphore's waiters list. Thread B's donation is revoked. This is done in a call to revoke_donation() method, which reverts the effective priority of thread B to its base priority or any previous donations thread B received. The ready list is re-sorted and the thread yields the CPU, if necessary after effective priority change.
 
 ---- SYNCHRONIZATION ----
 
