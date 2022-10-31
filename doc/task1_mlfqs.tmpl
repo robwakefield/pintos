@@ -8,7 +8,6 @@
 
 >> Fill in the names and email addresses of your group members.
 
-
 Robert Wakefield <rgw20@ic.ac.uk>
 Nada Struharova <ns2321@ic.ac.uk>
 Harrison Barker <hb321@ic.ac.uk>
@@ -53,25 +52,25 @@ Added to struct lock:
 
                  +-+           +-+
                 ++-++         ++-++
-           +----+ 1 |    +----+ 2 |        When a high-priority thread H is blocked waiting on a lock
+           +----+ 1 |    +----+ 2 |        
            |    +-^-+    |    +-^-+
-           |      |      |      |          currently held by a lower-priority thread M, a donation occurs.
+           |      |      |      |          
            |      |      |      |
-           |      |      |      |          However, thread M might also be blocked on some other lock,
+           |      |      |      |          
  +-----+   |   +--+--+   |   +--+--+
- |  H  <---+   |  M  <---+   |  L  |       as shown in the diagram. In this case, a nested donation is required.
+ |  H  <---+   |  M  <---+   |  L  |      
  +-----+       +-----+       +-----+
 
 When a high-priority thread H is blocked waiting on a lock currently held by a lower-priority thread M a donation occurs. However, thread M might also be blocked on some other lock, as shown in the diagram. In this case, a nested donation is required.
 
                  +-+           +-+
-                ++-++         ++-++       Thread H checks if the holder of lock 1 has lower priority.
+                ++-++         ++-++       
            +----+ 1 |    +----+ 2 |
-           |    +-^-+    |    +-^-+       If so, thread H donates its high priority to the lock holder.
+           |    +-^-+    |    +-^-+      
            |      |      |      |
-           |      |      |      |         After the donation is finished, it is checked whether the thread
+           |      |      |      |         
            |      |      |      |
- +-----+   |   +--+--+   |   +--+--+      receiving a donation is also not blocked on a resource.
+ +-----+   |   +--+--+   |   +--+--+     
  |  H  |<--+   |  H  <---+   |  L  |
  +--+--+       +--+--+       +-----+
     |             |
@@ -81,30 +80,29 @@ Thread H checks if the holder of lock 1 has lower priority. If so, thread H dona
 
                  +-+           +-+
                 ++-++         ++-++
-           +----+ 1 |    +----+ 2 |       If it is blocked on some lock, the donation process is repeated.
+           +----+ 1 |    +----+ 2 |       
            |    +-^-+    |    +-^-+
-           |      |      |      |         Check if the lock holder is of lower priority and donate if necessary.
+           |      |      |      |         
            |      |      |      |
-           |      |      |      |         However, this nested donation now passes around the original
+           |      |      |      |         
  +-----+   |   +--+--+   |   +--+--+
- |  H  |<--+   |  H  <---+   |  H  |      donated priority H, the first donated priority inside the loop.
+ |  H  |<--+   |  H  <---+   |  H  |      
  +--+--+       +--+-++       +--+--+
-    |             | |           |         The check loop is repeated until a thread is not blocked
+    |             | |           |         
     +---donates---+ +--donates--+
-                                          by a lock is reached.
 
 
 If it is blocked on a lock, the donation process is repeated - check if the lock holder is of lower priority and donate if necessary. However, this nested donation now passes around the original donated priority H, the first donated priority inside the loop. The check loop is repeated until a thread is not blocked by a lock is reached.
 
                  +-+           +-+
                 ++-++         ++-++
-           +----+ 1 |     +---> 2 |      Once the nested donation is done, we can wait for the individual threads
+           +----+ 1 |     +---> 2 |      
            |    +-^-+     |   +---+
-           |      |       |              to release the locks. When one of the threads forming the nested
+           |      |       |              
            |      |       |
-           |      |       |              donation releases its lock, and the lock is acquired by the
+           |      |       |              
  +-----+   |   +--+--+    |  +-----+
- |  H  |<--+   |  H  +----+  |  L  |     highest-priority waiter and the donation is revoked.
+ |  H  |<--+   |  H  +----+  |  L  |     
  +--+--+       +--+--+       +-----+
     |             |
     +---donates---+
@@ -113,9 +111,9 @@ Once the nested donation is done, we can wait for the individual thread to relea
 
                  +-+           +-+
                 ++-++         ++-++
-           +----> 1 |         | 2 |     This process is also repeated until the original
+           +----> 1 |         | 2 |     
            |    +---+         +---+
-           |                            donating thread acquires the desired lock.
+           |                            
            |
            |
  +-----+   |   +-----+       +-----+
