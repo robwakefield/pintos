@@ -297,7 +297,7 @@ thread_unblock (struct thread *t)
   ASSERT (t->status == THREAD_BLOCKED);
   
   if(thread_mlfqs)
-    calculate_priority(t,NULL);
+    calculate_priority (t, NULL);
 
   list_insert_ordered (&ready_list, &t->elem, &compare_priority, NULL);
 
@@ -393,9 +393,8 @@ thread_yield (void)
 
 void
 donate (struct thread *t, int new_priority) {
-  if(thread_mlfqs){
+  if(thread_mlfqs)
     return;
-  }
   if (new_priority > t->priority)
     t->priority = new_priority;
   
@@ -474,12 +473,10 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  if(thread_mlfqs){
+  if(thread_mlfqs)
     return;
-  }
-  struct thread *curr = thread_current ();
 
-  
+  struct thread *curr = thread_current ();
 
   enum intr_level old_level = intr_disable ();
 
