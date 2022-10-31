@@ -389,9 +389,8 @@ thread_yield (void)
 
 void
 donate (struct thread *t, int new_priority) {
-  if(thread_mlfqs){
+  if(thread_mlfqs)
     return;
-  }
   if (new_priority > t->priority)
     t->priority = new_priority;
   
@@ -453,9 +452,8 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  if(thread_mlfqs){
+  if(thread_mlfqs)
     return;
-  }
   struct thread *curr = thread_current ();
 
   
@@ -500,9 +498,8 @@ void
 revoke_donation () 
 {
   struct thread *t = thread_current ();
-  if(thread_mlfqs){
+  if(thread_mlfqs)
     return;
-  }
   if (t->priority == t->base_priority)
     return;
   
@@ -754,6 +751,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->nice = 0;
   t->nice = running_thread()->nice;
   t->recent_cpu = 0;
+  t->recent_cpu = running_thread()->recent_cpu;
   
   
   list_init(&(t->locks));
