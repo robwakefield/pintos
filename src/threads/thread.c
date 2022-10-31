@@ -147,11 +147,8 @@ thread_tick (void)
     }
     /* Update priority for all threads every 4 ticks */
     if (timer_ticks () % 4 == 0 || timer_ticks () % TIMER_FREQ == 0) {
-      calculate_priority(thread_current(),NULL);
-      thread_forin(&calculate_priority,&ready_list,NULL);
-      
-      
-
+      calculate_priority (thread_current (), NULL);
+      thread_forin (&calculate_priority, &ready_list, NULL);
       
       bool yield = false;
       enum intr_level old_level = intr_disable();
@@ -298,9 +295,10 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  if(thread_mlfqs){
+  
+  if(thread_mlfqs)
     calculate_priority(t,NULL);
-  }
+
   list_insert_ordered (&ready_list, &t->elem, &compare_priority, NULL);
 
   t->status = THREAD_READY;
@@ -441,10 +439,10 @@ void thread_remove_lock (struct lock *lock)
 /* Invoke function 'func' on all threads in a list, passing along 'aux'.
    This function must be called with interrupts off. */
 void
-thread_forin (thread_action_func *func,struct list *list, void *aux)
+thread_forin (thread_action_func *func, struct list *list, void *aux)
 {
   struct list_elem *e;
-  ASSERT(list_empty(list) || is_thread(list_entry (list_begin (list), struct thread, elem)));
+  ASSERT(list_empty(list) || is_thread (list_entry (list_begin (list), struct thread, elem)));
   ASSERT (intr_get_level () == INTR_OFF);
 
   for (e = list_begin (list); e != list_end (list);
