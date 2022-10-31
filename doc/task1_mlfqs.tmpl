@@ -8,6 +8,7 @@
 
 >> Fill in the names and email addresses of your group members.
 
+
 Robert Wakefield <rgw20@ic.ac.uk>
 Nada Struharova <ns2321@ic.ac.uk>
 Harrison Barker <hb321@ic.ac.uk>
@@ -153,9 +154,11 @@ and lock L's holder is set to the current thread. Lock L is added to the current
 >> Describe the sequence of events when lock_release() is called on a lock that 
 >> a higher-priority thread is waiting for.
 
+
 Once lock L is released, it is removed from the holder thread B's held locks list and L's holder is set to NULL. The semaphore of lock L is upped to unblock the highest priority thread in its waiters list, which will be thread A. Thread B still operates with the donated priority so as to finish releasing the lock and not yield the CPU at an undesirable moment. 
 Lock L's max_priority field is updated to the priority of the highest priority thread in the semaphore's waiters list. Thread B's donation is revoked. This is done in a call to revoke_donation() method, which reverts the effective priority of thread B to its base priority or any previous donations thread B received. The ready list is re-sorted and the thread yields the CPU, 
 if necessary after effective priority change.
+
 
 ---- SYNCHRONIZATION ----
 
@@ -238,6 +241,6 @@ When a running thread has its priority calculated and the result is equal to the
 
 Instead of implementing 64 separate ready queues, we used a single queue with threads ordered by their calculated priority. This allowed the implementation to work nicely with the priority scheduler and meant that the round robin requirement of equal priority threads would work with no extra code.
 
-The recent_cpu, load_avg and priority calculations take place in thread_tick() and are run only when necessary in order to minimise the amount of processing time happening during the timer interrupt.
+The recent_cpu and load_avg calculations take place in thread_tick() and are run only when necessary in order to minimise the amount of processing time happening during the timer interrupt. calculate_priority() is also run as few times as necessary. Every four ticks only the ready and running threads have their priority updated. Blocked threads only have their priority updated during thread_unblock before they are added to the ready list and in sema_up so the thread with the highest priority can be unblocked.
 
 The fixed point functions are implemented as preprocesser macros in the file fixed-point.h. Macros were used instead of functions to keep the time cost of running these functions to a minimum and to make the code more readable. However this can make debugging more difficult as it can be hard to pinpoint where exactly the bug is.
