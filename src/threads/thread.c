@@ -573,7 +573,7 @@ void calculate_load_avg () {
   //16110 represents 59/60 in 17.14 273 represents 1/60 in 17.14
 }
 
-void calculate_recent_cpu (struct thread *t) {
+void calculate_recent_cpu (struct thread *t, void *aux UNUSED) {
   int coefficient = FP_DIV (
                       FP_MUL (
                         FP (2),
@@ -592,7 +592,7 @@ void calculate_recent_cpu (struct thread *t) {
 
 }
 
-void calculate_priority (struct thread *t) {
+void calculate_priority (struct thread *t, void *aux UNUSED) {
   int priority = PRI_MIN;
   if(t != idle_thread){
     priority = FP_FLOOR (
@@ -624,7 +624,7 @@ thread_set_nice (int nice )
   bool yield = false;
   enum intr_level old_level = intr_disable();
 
-  calculate_priority(thread_current());
+  calculate_priority(thread_current(), NULL);
 
   /* Yield if current thread no longer has highest priority */
   if (!list_empty (&ready_list)) {
@@ -757,7 +757,7 @@ init_thread (struct thread *t, const char *name, int priority)
   old_level = intr_disable ();
 
   if (thread_mlfqs)
-  calculate_priority(t);
+  calculate_priority(t, NULL);
   
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);

@@ -117,8 +117,8 @@ extern bool thread_mlfqs;
 
 extern int load_avg;
 
-void calculate_priority(struct thread*);
-void calculate_recent_cpu(struct thread*);
+void calculate_priority(struct thread*, void *aux UNUSED);
+void calculate_recent_cpu(struct thread*, void *aux UNUSED);
 void calculate_load_avg(void);
 
 void thread_init (void);
