@@ -93,7 +93,7 @@ static bool
 order_threads(const struct list_elem *first, const struct list_elem *second, void *aux UNUSED) {
   struct sleep_list_elem *thread_a = list_entry(first, struct sleep_list_elem, elem);
   struct sleep_list_elem *thread_b = list_entry(second, struct sleep_list_elem, elem);
-  return thread_a->sleep_for_ticks < thread_b->sleep_for_ticks;
+  return thread_a->wake_up_time < thread_b->wake_up_time;
 }
 
 /* Sleeps for approximately TICKS timer ticks.  Interrupts must
@@ -103,12 +103,9 @@ timer_sleep (int64_t ticks)
 {
   if(ticks <= 0)
     return;
-  
+
   int64_t start = timer_ticks (); /* timer ticks in OS uptil timer_sleep was called */
   ASSERT (intr_get_level () == INTR_ON); /* checks if interrupts are on */
-  
-  /* get current thread, thread to put to sleep */
-  struct thread *curr_thread = thread_current();
 
   /* create and initialize a semaphore for new sleeping thread*/
   struct semaphore new_sema;
@@ -116,8 +113,7 @@ timer_sleep (int64_t ticks)
 
   /* initialise new 'sleeping' element to put on the sleep list */
   struct sleep_list_elem new_sleep_thread;
-  new_sleep_thread.sleep_thread = curr_thread;
-  new_sleep_thread.sleep_for_ticks = start + ticks;
+  new_sleep_thread.wake_up_time = start + ticks;
   new_sleep_thread.thread_sema = &new_sema;
 
   /* disable interrupts while accessing sleep_list which can be modified by timer_interrupt */
@@ -213,7 +209,7 @@ timer_interrupt (struct intr_frame *args UNUSED)
   while(!list_empty(&sleep_list)){
     struct sleep_list_elem *sleep_thread = list_entry(list_begin(&sleep_list), struct sleep_list_elem, elem);
 
-    if(ticks >= sleep_thread->sleep_for_ticks){
+    if(timer_ticks () >= sleep_thread->wake_up_time){
       /* if thread is ready to wake up -> release semaphore and pop from the sleep list */
       sema_up(sleep_thread->thread_sema);
       list_pop_front(&sleep_list);
@@ -221,8 +217,8 @@ timer_interrupt (struct intr_frame *args UNUSED)
       break;
     }
   }
-  
-  thread_tick ();
+  thread_tick();
+
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

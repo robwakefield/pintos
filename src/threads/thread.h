@@ -4,6 +4,8 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include <stdbool.h>
+#include "synch.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -87,8 +89,14 @@ struct thread
     enum thread_status status;          /* Thread state. */
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
-    int priority;                       /* Priority. */
+    int priority;                       /* Priority (Effective Priority) */
+    int base_priority;                  /* Base Priority */
+    int nice;                           // nice value for advanced scheduler
+    int recent_cpu;
     struct list_elem allelem;           /* List element for all threads list. */
+
+    struct lock *waiting_on;             /* The lock currently blocking the thread. */
+    struct list locks;                  /* List of locks the thread is currently holding. */
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
@@ -106,6 +114,12 @@ struct thread
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "mlfqs". */
 extern bool thread_mlfqs;
+
+extern int load_avg;
+
+void calculate_priority(struct thread*, void *aux UNUSED);
+void calculate_recent_cpu(struct thread*, void *aux UNUSED);
+void calculate_load_avg(void);
 
 void thread_init (void);
 void thread_start (void);
@@ -126,11 +140,23 @@ const char *thread_name (void);
 
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);
+void donate (struct thread *t, int new_priority);
+
+bool compare_priority(const struct list_elem *first, const struct list_elem *second, void *aux UNUSED);
+
+void add_to_ready_list (struct thread *t);
+void thread_add_lock (struct lock *lock);
+void thread_remove_lock (struct lock *lock);
 
 /* Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func (struct thread *t, void *aux);
 void thread_foreach (thread_action_func *, void *);
+void thread_forin (thread_action_func *, struct list*, void *);
 
+void donate (struct thread* t, int new_priority);
+void revoke_donation (void);
+bool test_yield (void);
+void list_resort (struct list *list, struct list_elem *elem, list_less_func *less);
 int thread_get_priority (void);
 void thread_set_priority (int);
 
