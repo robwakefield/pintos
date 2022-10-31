@@ -294,7 +294,7 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-
+  
   list_insert_ordered (&ready_list, &t->elem, &compare_priority, NULL);
 
   t->status = THREAD_READY;
@@ -497,10 +497,10 @@ thread_get_priority (void)
 void
 revoke_donation () 
 {
-  struct thread *t = thread_current ();
+  struct thread *cur = thread_current ();
   if(thread_mlfqs)
     return;
-  if (t->priority == t->base_priority)
+  if (cur->priority == cur->base_priority)
     return;
   
   int new_priority;
@@ -508,23 +508,23 @@ revoke_donation ()
   enum intr_level old_level = intr_disable ();
 
   /* Check for previous donations to revert to. */
-  if (!list_empty (&t->locks)) {
-    new_priority = list_entry (list_front (&t->locks), struct lock, elem)->max_priority;
+  if (!list_empty (&cur->locks)) {
+    new_priority = list_entry (list_front (&cur->locks), struct lock, elem)->max_priority;
   } else {
-    new_priority = t->base_priority;
+    new_priority = cur->base_priority;
   }
 
   /* Change thread's effective priority to previous donation or base priority). */
-  t->priority = new_priority;
+  cur->priority = new_priority;
 
   intr_set_level (old_level);
 
   
   
   /* Resort ready list. */
-  if (t->status == THREAD_READY)
-    list_resort (&ready_list, &(t->elem), &compare_priority);
-  if (t->status == THREAD_RUNNING) {
+  if (cur->status == THREAD_READY)
+    list_resort (&ready_list, &(cur->elem), &compare_priority);
+  if (cur->status == THREAD_RUNNING) {
     /* Check if thread should yield the CPU. */
     if (test_yield ())
       thread_yield ();
