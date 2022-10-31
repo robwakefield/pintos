@@ -151,6 +151,7 @@ void thread_remove_lock (struct lock *lock);
 /* Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func (struct thread *t, void *aux);
 void thread_foreach (thread_action_func *, void *);
+void thread_forin (thread_action_func *, struct list*, void *);
 
 void donate (struct thread* t, int new_priority);
 void revoke_donation (void);
