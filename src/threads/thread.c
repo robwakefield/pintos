@@ -458,6 +458,10 @@ thread_set_priority (int new_priority)
   }
   struct thread *curr = thread_current ();
 
+  
+
+  enum intr_level old_level = intr_disable ();
+
   /* If thread is not being donated to, change effective priority as well. */
   if (curr->base_priority == curr->priority)
     curr->priority = new_priority;
@@ -466,8 +470,6 @@ thread_set_priority (int new_priority)
   if (new_priority > curr->priority) {
     curr->priority = new_priority;
   }
-
-  enum intr_level old_level = intr_disable ();
   
   if (!list_empty (&curr->locks)) {
     int prev_donation = list_entry (list_front (&curr->locks), struct lock, elem)->max_priority;
@@ -515,10 +517,12 @@ revoke_donation ()
     new_priority = t->base_priority;
   }
 
-  intr_set_level (old_level);
-
   /* Change thread's effective priority to previous donation or base priority). */
   t->priority = new_priority;
+
+  intr_set_level (old_level);
+
+  
   
   /* Resort ready list. */
   if (t->status == THREAD_READY)
