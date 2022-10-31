@@ -137,14 +137,17 @@ thread_tick (void)
   struct thread *t = thread_current ();
 
   if(thread_mlfqs){
+
     /* Increment recent CPU every tick */
     if(thread_current() != idle_thread)
       thread_current()->recent_cpu = FP_ADD (thread_current ()->recent_cpu, FP (1));
+
     /* Update recent CPU for all threads every second */
     if (timer_ticks () % TIMER_FREQ == 0) {
       calculate_load_avg ();
       thread_foreach (calculate_recent_cpu, NULL);
     }
+
     /* Update priority for all threads every 4 ticks */
     if (timer_ticks () % 4 == 0 || timer_ticks () % TIMER_FREQ == 0) {
       thread_foreach (calculate_priority, NULL);
@@ -160,6 +163,7 @@ thread_tick (void)
       }
 
       intr_set_level(old_level);
+
       if (yield) {
         if (intr_context ()) {
           intr_yield_on_return ();
@@ -173,10 +177,12 @@ thread_tick (void)
   /* Update statistics. */
   if (t == idle_thread)
     idle_ticks++;
+
 #ifdef USERPROG
   else if (t->pagedir != NULL)
     user_ticks++;
 #endif
+
   else
     kernel_ticks++;
 
@@ -377,6 +383,7 @@ thread_yield (void)
   ASSERT (!intr_context ());
 
   old_level = intr_disable ();
+  
   if (cur != idle_thread) {
     list_insert_ordered (&ready_list, &cur->elem, &compare_priority, NULL);
     cur->status = THREAD_READY;
@@ -389,8 +396,10 @@ thread_yield (void)
 
 void
 donate (struct thread *t, int new_priority) {
+
   if(thread_mlfqs)
     return;
+
   if (new_priority > t->priority)
     t->priority = new_priority;
   
@@ -398,7 +407,6 @@ donate (struct thread *t, int new_priority) {
   if (t->status == THREAD_READY) {
     list_resort (&ready_list, &(t->elem), &compare_priority);
   }
-
 }
 
 /* Compares priorities of two threads, 
@@ -410,7 +418,7 @@ compare_priority(const struct list_elem *first, const struct list_elem *second, 
   return thread_a->priority > thread_b->priority;
 }
 
-/* Add a lock to the thread's holding locks list. */
+/* Add a lock to the thread's currently held locks list. */
 void
 thread_add_lock (struct lock *lock)
 {
@@ -421,6 +429,7 @@ thread_add_lock (struct lock *lock)
   intr_set_level (old_level);
 }
 
+/* Remove a lock from thread's currently held locks list. */
 void thread_remove_lock (struct lock *lock)
 {
   enum intr_level old_level = intr_disable ();
@@ -456,8 +465,7 @@ thread_set_priority (int new_priority)
     return;
   struct thread *curr = thread_current ();
 
-  
-
+  /* Disable interrupts to avoid race. */
   enum intr_level old_level = intr_disable ();
 
   /* If thread is not being donated to, change effective priority as well. */
@@ -469,6 +477,7 @@ thread_set_priority (int new_priority)
     curr->priority = new_priority;
   }
   
+  /* Check for previous donations to revert priority to. */
   if (!list_empty (&curr->locks)) {
     int prev_donation = list_entry (list_front (&curr->locks), struct lock, elem)->max_priority;
     if (prev_donation > new_priority)
@@ -519,8 +528,6 @@ revoke_donation ()
 
   intr_set_level (old_level);
 
-  
-  
   /* Resort ready list. */
   if (cur->status == THREAD_READY)
     list_resort (&ready_list, &(cur->elem), &compare_priority);
@@ -535,6 +542,7 @@ revoke_donation ()
 bool
 test_yield (void) {
   enum intr_level old_level = intr_disable ();
+
   bool yield = false;
   
   /* Check if thread needs to yield to the highest priority ready thread. */
@@ -562,7 +570,10 @@ list_resort (struct list *list, struct list_elem *elem, list_less_func *less) {
 }
 
 void calculate_load_avg () { 
+  /* 16110 represents 59/60 in 17.14 273 represents 1/60 in 17.14 */
+
   int i = thread_current() != idle_thread;
+
   load_avg = FP_ADD (
               FP_MUL (
                 FP_DIV (FP (59), FP (60)),
@@ -571,8 +582,6 @@ void calculate_load_avg () {
                 FP_DIV (FP (1), FP (60)),
                 FP (threads_ready() + i))
               ); 
-
-  //16110 represents 59/60 in 17.14 273 represents 1/60 in 17.14
 }
 
 void calculate_recent_cpu (struct thread *t, void *aux UNUSED) {
@@ -624,6 +633,7 @@ thread_set_nice (int nice )
 {
   thread_current()->nice = nice;
   bool yield = false;
+
   enum intr_level old_level = intr_disable();
 
   calculate_priority(thread_current(), NULL);
@@ -636,6 +646,7 @@ thread_set_nice (int nice )
   }
 
   intr_set_level(old_level);
+  
   if (yield)
     thread_yield();
 }
