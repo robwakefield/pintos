@@ -38,10 +38,18 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
+  /* Parse command line input into program name and arguments. */
+  char *prog_name, *args;
+  prog_name = strtok_r (fn_copy, " ", &args);
+
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
-  if (tid == TID_ERROR)
+  tid = thread_create (prog_name, PRI_DEFAULT, start_process, args);
+  if (tid == TID_ERROR) {
     palloc_free_page (fn_copy); 
+  }
+
+  /* if new thread is valid -> disable interrupts and add thread into parents "child threads" list?? */
+
   return tid;
 }
 
