@@ -28,3 +28,18 @@ valid_pointer (void *p)
   }
   return is_user_vaddr (p);
 }
+
+void
+exit (int status)
+{
+  printf ("%s: exit(%d)\n", thread_current ()->name, status);
+  thread_exit ();
+}
+
+int
+write (int fd, const void *buffer, unsigned length)
+{
+  if (fd == 1) {
+    putbuf (buffer, length);
+  }
+}
