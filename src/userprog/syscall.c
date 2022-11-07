@@ -18,3 +18,13 @@ syscall_handler (struct intr_frame *f UNUSED)
   printf ("system call!\n");
   thread_exit ();
 }
+
+/* Returns true if the pointer is a valid user pointer */
+static bool
+valid_pointer (void *p)
+{
+  if (pagedir_get_page (thread_current ()->pagedir, p) == NULL) {
+    return false;
+  }
+  return is_user_vaddr (p);
+}
