@@ -77,6 +77,7 @@ void *get_arg (struct intr_frame *f, int i) {
   if (valid_pointer (a)) {
     return a;
   }
+  // return valid_pointer (a) ?
 }
 
 /* Implement all syscalls needed for Task 2 - User Programs */
@@ -94,6 +95,11 @@ syscall_exit(struct intr_frame *f) {
 
 void
 syscall_exec(struct intr_frame *f) {
+
+}
+
+void
+syscall_wait(struct intr_frame *f) {
 
 }
 
