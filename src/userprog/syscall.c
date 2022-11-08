@@ -51,8 +51,6 @@ syscall_handler (struct intr_frame *f)
 {
   printf ("system call!\n");
 
-  /* check if pointer is valid */
-
   /* get system call number */
   int syscall_num = *(int*)f->esp;
 
@@ -70,10 +68,15 @@ valid_pointer (void *p)
     return false;
   }
   return is_user_vaddr (p);
+  /* TODO: handle invalid pointer (terminate thread) */
 }
 
-void *get_first_arg (struct intr_frame *f) {
-  /* get f->esp + 4 */
+/* Get ith argument */
+void *get_arg (struct intr_frame *f, int i) {
+  void *a = f->esp + (4 * (i + 1));
+  if (valid_pointer (a)) {
+    return a;
+  }
 }
 
 /* Implement all syscalls needed for Task 2 - User Programs */
@@ -84,7 +87,7 @@ syscall_halt(struct intr_frame *f) {
 
 void
 syscall_exit(struct intr_frame *f) {
-  int status = get_first_arg;
+  int status = *(int*) get_arg (f, 0);
   printf ("%s: exit(%d)\n", thread_current ()->name, status);
   thread_exit ();
 }
@@ -121,12 +124,12 @@ syscall_read(struct intr_frame *f) {
 
 void
 syscall_write(struct intr_frame *f) {
-  //write (int fd, const void *buffer, unsigned length)
-  /*
+  int fd = *(int*) get_arg (f, 0);
+  const void* buffer = get_arg (f, 1);
+  unsigned length = *(unsigned*) get_arg (f, 2);
   if (fd == 1) {
     putbuf (buffer, length);
   }
-  */
 }
 
 void
