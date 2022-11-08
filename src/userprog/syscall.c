@@ -5,10 +5,10 @@
 #include "threads/thread.h"
 
 static void syscall_handler (struct intr_frame *);
-static int (*syscall_handlers[20]) (struct intr_frame *);     /* Array of function pointers so syscall handlers. */
+static void (*syscall_handlers[20]) (struct intr_frame *);     /* Array of function pointers so syscall handlers. */
 
 /* System call handler functions. */
-// do these need to be static or not?
+/* do these need to be static or not? */
 void syscall_halt (struct intr_frame *);
 void syscall_exit (struct intr_frame *);
 void syscall_exec (struct intr_frame *);
@@ -49,15 +49,20 @@ syscall_handler (struct intr_frame *f)
   printf ("system call!\n");
 
   /* check if pointer is valid */
+  //in other branch
 
   /* get system call number */
-  // int syscall_num = *f->esp;
+  // type?
+  int syscall_num = *(int*)f->esp;
 
   /* call syscall from array syscall_handlers */
-  // syscall_handlers[syscall_num](f);
+  syscall_handlers[syscall_num](f);
 
+  /* handle return value */
+}
 
-  thread_exit ();
+void *get_first_arg (struct intr_frame *f) {
+  /* get f->esp + 4 */
 }
 
 /* Implement all syscalls needed for Task 2 - User Programs */
