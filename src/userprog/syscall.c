@@ -52,16 +52,24 @@ syscall_handler (struct intr_frame *f)
   printf ("system call!\n");
 
   /* check if pointer is valid */
-  //in other branch
 
   /* get system call number */
-  // type?
   int syscall_num = *(int*)f->esp;
 
   /* call syscall from array syscall_handlers */
   syscall_handlers[syscall_num](f);
 
-  /* handle return value */
+  /* handle return value in eax*/
+}
+
+/* Returns true if the pointer is a valid user pointer */
+static bool
+valid_pointer (void *p)
+{
+  if (pagedir_get_page (thread_current ()->pagedir, p) == NULL) {
+    return false;
+  }
+  return is_user_vaddr (p);
 }
 
 void *get_first_arg (struct intr_frame *f) {
@@ -76,7 +84,9 @@ syscall_halt(struct intr_frame *f) {
 
 void
 syscall_exit(struct intr_frame *f) {
-  
+  int status = get_first_arg;
+  printf ("%s: exit(%d)\n", thread_current ()->name, status);
+  thread_exit ();
 }
 
 void
@@ -111,7 +121,12 @@ syscall_read(struct intr_frame *f) {
 
 void
 syscall_write(struct intr_frame *f) {
-  
+  //write (int fd, const void *buffer, unsigned length)
+  /*
+  if (fd == 1) {
+    putbuf (buffer, length);
+  }
+  */
 }
 
 void
@@ -127,29 +142,4 @@ syscall_tell(struct intr_frame *f) {
 void
 syscall_close(struct intr_frame *f) {
   
-}
-
-/* Returns true if the pointer is a valid user pointer */
-static bool
-valid_pointer (void *p)
-{
-  if (pagedir_get_page (thread_current ()->pagedir, p) == NULL) {
-    return false;
-  }
-  return is_user_vaddr (p);
-}
-
-void
-exit (int status)
-{
-  printf ("%s: exit(%d)\n", thread_current ()->name, status);
-  thread_exit ();
-}
-
-int
-write (int fd, const void *buffer, unsigned length)
-{
-  if (fd == 1) {
-    putbuf (buffer, length);
-  }
 }
