@@ -3,9 +3,12 @@
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "userprog/pagedir.h"
+#include "threads/vaddr.h"
 
 static void syscall_handler (struct intr_frame *);
 static void (*syscall_handlers[20]) (struct intr_frame *);     /* Array of function pointers so syscall handlers. */
+static bool valid_pointer (void *);
 
 /* System call handler functions. */
 /* do these need to be static or not? */
@@ -124,4 +127,29 @@ syscall_tell(struct intr_frame *f) {
 void
 syscall_close(struct intr_frame *f) {
   
+}
+
+/* Returns true if the pointer is a valid user pointer */
+static bool
+valid_pointer (void *p)
+{
+  if (pagedir_get_page (thread_current ()->pagedir, p) == NULL) {
+    return false;
+  }
+  return is_user_vaddr (p);
+}
+
+void
+exit (int status)
+{
+  printf ("%s: exit(%d)\n", thread_current ()->name, status);
+  thread_exit ();
+}
+
+int
+write (int fd, const void *buffer, unsigned length)
+{
+  if (fd == 1) {
+    putbuf (buffer, length);
+  }
 }

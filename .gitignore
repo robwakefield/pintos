@@ -23,3 +23,5 @@
 *.nav
 *.toc
 
+#ignore pintos file system
+filesys.dsk
