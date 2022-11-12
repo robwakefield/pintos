@@ -38,9 +38,17 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
+  printf ("cmdline: %s\n", fn_copy);
+
   /* Parse command line input into program name and arguments. */
-  char *prog_name, *args;
+  char *prog_name, *arg_val, *args;
   prog_name = strtok_r (fn_copy, " ", &args);
+
+  printf ("name: %s\n", prog_name);
+
+  for (arg_val = strtok_r (NULL, " ", &args); arg_val != NULL; arg_val = strtok_r (NULL, " ", &args)) {
+    printf ("arg: '%s'\n", arg_val);
+  }
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (prog_name, PRI_DEFAULT, start_process, args);
