@@ -481,7 +481,6 @@ setup_stack (const struct arguments *args, void **esp)
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success) {
-        printf ("pushing args\n");
         *esp = push_args_on_stack (args);
         printf ("Set up stack:\n");
         hex_dump (PHYS_BASE - 64, kpage + PGSIZE - 64, 64, true);
@@ -506,25 +505,22 @@ static void *push_args_on_stack (const struct arguments *args) {
   }
   
   /* Round esp down to multiple of 4 */
-  esp -= 1; // TODO: change this
-  memset (esp, 0, 1);
+  esp -= ((uint8_t) esp) % 4;
 
   /* Push address of each argument (RTL) */
   for (int i = args->argc; i >= 0; i--) {
-    esp -= 4; // TODO: change to sizeof?
-    memcpy (esp, &arg_pointer[i], 4);
+    esp -= sizeof (char *); // TODO: change to sizeof?
+    memcpy (esp, &arg_pointer[i], sizeof (char *));
   }
   
   /* Push argv */
-  memcpy (esp - 4, &esp, 4);
-  esp -= 4;
+  memcpy (esp - sizeof (char **), &esp, sizeof (char **));
+  esp -= sizeof(char **);
   /* Push argc */
-  esp -= 4;
-  memcpy (esp, &args->argc, 4);
-  printf("done\n");
+  esp -= sizeof (uint32_t);
+  memcpy (esp, &args->argc, sizeof (uint32_t));
   /* Push a fake return address */
-  esp -=4;
-  memset (esp, 0, 4); // TODO: uneccessary?
+  esp -= sizeof (void *);
   
   return esp;
 }
