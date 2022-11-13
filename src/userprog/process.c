@@ -21,7 +21,7 @@
 /* Passed argument struct */
 struct arguments {
   int argc;
-  char *argv[128]; // TODO: limit lemgth?
+  char *argv[128]; // TODO: Choose correct limit length
 };
 
 static thread_func start_process NO_RETURN;
@@ -58,7 +58,7 @@ process_execute (const char *file_name)
   }
 
   /* Create a new thread to execute FILE_NAME. */
-  char *prog_name = args->argv[0]; // TODO: change this to protect against empty argv
+  char *prog_name = args->argv[0]; 
   tid = thread_create (prog_name, PRI_DEFAULT, start_process, args);
   if (tid == TID_ERROR) {
     palloc_free_page (fn_copy); 
@@ -482,6 +482,7 @@ setup_stack (const struct arguments *args, void **esp)
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success) {
         *esp = push_args_on_stack (args);
+        // TODO: debugging code
         printf ("Set up stack:\n");
         hex_dump (PHYS_BASE - 64, kpage + PGSIZE - 64, 64, true);
       } else {
@@ -509,7 +510,7 @@ static void *push_args_on_stack (const struct arguments *args) {
 
   /* Push address of each argument (RTL) */
   for (int i = args->argc; i >= 0; i--) {
-    esp -= sizeof (char *); // TODO: change to sizeof?
+    esp -= sizeof (char *);
     memcpy (esp, &arg_pointer[i], sizeof (char *));
   }
   
