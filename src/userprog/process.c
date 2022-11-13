@@ -21,6 +21,12 @@
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 
+/* Passed argument struct */
+struct arguments {
+  int argc;
+  char *argv[128];
+};
+
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
@@ -38,19 +44,20 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
-  printf ("cmdline: %s\n", fn_copy);
-
   /* Parse command line input into program name and arguments. */
-  char *prog_name, *arg_val, *args;
-  prog_name = strtok_r (fn_copy, " ", &args);
+  struct arguments *args;
+  args = palloc_get_page (0); // TODO: free this somewhere
+  if (args == NULL)
+    return TID_ERROR;
 
-  printf ("name: %s\n", prog_name);
-
-  for (arg_val = strtok_r (NULL, " ", &args); arg_val != NULL; arg_val = strtok_r (NULL, " ", &args)) {
-    printf ("arg: '%s'\n", arg_val);
+  char *arg_val, *s_ptr;
+  for (arg_val = strtok_r (fn_copy, " ", &s_ptr); arg_val != NULL; arg_val = strtok_r (NULL, " ", &s_ptr)) {
+    args->argv[args->argc] = arg_val;
+    args->argc++;
   }
 
   /* Create a new thread to execute FILE_NAME. */
+  char *prog_name = args->argv[0]; // TODO: change this to protect against empty argv
   tid = thread_create (prog_name, PRI_DEFAULT, start_process, args);
   if (tid == TID_ERROR) {
     palloc_free_page (fn_copy); 
@@ -64,9 +71,10 @@ process_execute (const char *file_name)
 /* A thread function that loads a user process and starts it
    running. */
 static void
-start_process (void *file_name_)
+start_process (void *aux)
 {
-  char *file_name = file_name_;
+  struct arguments *args = (struct arguments *) aux;
+  char* file_name = args->argv[0]; // TODO: check if argv is empty
   struct intr_frame if_;
   bool success;
 
