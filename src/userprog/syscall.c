@@ -180,5 +180,6 @@ syscall_tell(struct intr_frame *f) {
 
 void
 syscall_close(struct intr_frame *f) {
-  
+  int fd = *(int*) get_arg (f, 0);
+  file_close(fd_to_file(fd));
 }
