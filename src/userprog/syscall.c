@@ -71,8 +71,8 @@ syscall_handler (struct intr_frame *f)
 /* Returns true if the pointer is a valid user pointer */
 void *valid_pointer (void *p)
 {
-  if (pagedir_get_page (thread_current ()->pagedir, p) == NULL || !is_user_vaddr (p)) {
-    // TODO: remove duplication from sycall_exit
+  if (!is_user_vaddr (p) || pagedir_get_page (thread_current ()->pagedir, p) == NULL) {
+    // TODO: remove duplication from syscall_exit
     int status = -1;
     thread_current ()->exit_status = status;
     printf ("%s: exit(%d)\n", thread_current ()->name, status);
