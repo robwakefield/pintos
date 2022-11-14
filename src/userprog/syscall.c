@@ -5,6 +5,7 @@
 #include "threads/thread.h"
 #include "userprog/pagedir.h"
 #include "threads/vaddr.h"
+#include "devices/shutdown.h"
 
 static void syscall_handler (struct intr_frame *);
 static void (*syscall_handlers[20]) (struct intr_frame *);     /* Array of function pointers so syscall handlers. */
@@ -83,7 +84,7 @@ void *get_arg (struct intr_frame *f, int i) {
 /* Implement all syscalls needed for Task 2 - User Programs */
 void
 syscall_halt(struct intr_frame *f) {
-
+  shutdown_power_off();
 }
 
 void
@@ -103,29 +104,49 @@ syscall_wait(struct intr_frame *f) {
 
 }
 
+struct file * fd_to_file(int fd){
+  return (struct file *) fd;
+}
+
+int file_to_fd(struct file *file){
+  return (int) file;
+}
+
 void
 syscall_create(struct intr_frame *f) {
-  
+  const char *file = *(const char**) get_arg (f,0);
+  off_t size = *(off_t*) get_arg (f,1);
+  bool created = filesys_create(file,size);
+  f->eax = created;
 }
 
 void
 syscall_remove(struct intr_frame *f) {
-  
+  const char *file = *(const char**) get_arg (f,0);
+  bool removed = filesys_remove(file);
+  f->eax = removed;
 }
 
 void
 syscall_open(struct intr_frame *f) {
-  
+  const char *file = *(const char**) get_arg (f,0);
+  f->eax = file_to_fd(file);
 }
 
 void
 syscall_filesize(struct intr_frame *f) {
-  
+  int fd = *(int*) get_arg (f,0);
+  struct file *file = fd_to_file(fd);
+  f->eax = (int) file_length(file);
 }
 
 void
 syscall_read(struct intr_frame *f) {
-  
+  int fd = *(int*) get_arg (f,0);
+  void *buffer = *(void**) get_arg(f,1);
+  off_t size = *(off_t*);
+  f->eax = (int) file_read(fd_to_file(fd),buffer,size);
+
 }
 
 void
