@@ -100,10 +100,6 @@ start_process (void *aux)
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (args, &if_.eip, &if_.esp);
 
-  /* TESTING: Check if arguments were correctly pushed onto the stack. */
-  //hex_dump(if_.esp , if_.esp , PHYS_BASE – if_.esp , true);
-
-
   /* If load failed, quit. */
   palloc_free_page (args->argv[0]);
 
@@ -545,8 +541,8 @@ setup_stack (const struct arguments *args, void **esp)
       if (success) {
         *esp = push_args_on_stack (args);
         // TODO: debugging code
-        printf ("Set up stack:\n");
-        hex_dump (PHYS_BASE - 64, kpage + PGSIZE - 64, 64, true);
+        //printf ("Set up stack:\n");
+        //hex_dump (PHYS_BASE - 64, kpage + PGSIZE - 64, 64, true);
       } else {
         palloc_free_page (kpage);
       }

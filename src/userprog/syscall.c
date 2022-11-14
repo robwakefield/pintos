@@ -36,7 +36,7 @@ struct lock filesys_lock;
 void
 syscall_init (void) 
 {
-  lock_init(&filesys_lock);
+  lock_init (&filesys_lock);
 
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
   
@@ -58,13 +58,13 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f) 
 {
-  printf ("system call!\n");
 
   /* Get system call number. */
-  int syscall_num = *(int *)f->esp;
+  int syscall_num = *(int *) f->esp;
+  //printf ("system call! %d\n", syscall_num);
 
   /* Call appropriate system call function from system calls array. */
-  syscall_handlers[syscall_num](f);
+  syscall_handlers[syscall_num] (f);
 
 }
 
@@ -81,10 +81,8 @@ valid_pointer (void *p)
 
 /* Get ith argument */
 void *get_argument (struct intr_frame *f, int i) {
-  void *a = f->esp + ((i + 1));
-  if (valid_pointer (a)) {
-    return a;
-  }
+  return f->esp + (i + 1) * 4;
+  // TODO: check if its a valid pointer here?
 }
 
 /* Implement all syscalls needed for Task 2 - User Programs */
@@ -95,7 +93,7 @@ syscall_halt (struct intr_frame *f) {
 
 void
 syscall_exit (struct intr_frame *f) {
-  int status = get_argument (f, 0);
+  int status = *(int*) get_argument (f, 0);
 
   thread_current ()->exit_status = status;
 
@@ -104,7 +102,7 @@ syscall_exit (struct intr_frame *f) {
 }
 
 void
-syscall_exec(struct intr_frame *f) {
+syscall_exec (struct intr_frame *f) {
   const char *cmd_line = get_argument (f, 0);
 
   if (!valid_pointer (cmd_line)) {
@@ -123,11 +121,11 @@ syscall_wait (struct intr_frame *f) {
   f->eax = ret;
 }
 
-struct file * fd_to_file(int fd){
+struct file * fd_to_file (int fd){
   return (struct file *) fd;
 }
 
-int file_to_fd(struct file *file){
+int file_to_fd (struct file *file){
   return (int) file;
 }
 
@@ -142,96 +140,88 @@ syscall_create (struct intr_frame *f) {
   }
 
   lock_acquire (&filesys_lock);
-  bool success = filesys_create(file, initial_size);
+  bool success = filesys_create (file, initial_size);
   lock_release (&filesys_lock);
 
   f->eax = success;
 }
 
 void
-syscall_remove(struct intr_frame *f) {
-  const char *file = *(const char**) get_argument(f,0);
+syscall_remove (struct intr_frame *f) {
+  const char *file = *(const char**) get_argument (f, 0);
   lock_acquire (&filesys_lock);
-  bool removed = filesys_remove(file);
-  lock_release(&filesys_lock);
+  bool removed = filesys_remove (file);
+  lock_release (&filesys_lock);
   f->eax = removed;
 }
 
 void
-syscall_open(struct intr_frame *f) {
-  const char *name = *(const char**) get_argument(f,0);
+syscall_open (struct intr_frame *f) {
+  const char *name = *(const char**) get_argument (f, 0);
   lock_acquire (&filesys_lock);
   struct file *file = filesys_open (name);
-  lock_release(&filesys_lock);
-  f->eax = file_to_fd(file);
+  lock_release (&filesys_lock);
+  f->eax = file_to_fd (file);
 
 }
 
 void
-syscall_filesize(struct intr_frame *f) {
-  int fd = *(int*) get_argument(f,0);
-  struct file *file = fd_to_file(fd);
+syscall_filesize (struct intr_frame *f) {
+  int fd = *(int*) get_argument (f, 0);
+  struct file *file = fd_to_file (fd);
   lock_acquire (&filesys_lock);
-  f->eax = (int) file_length(file);
-  lock_release(&filesys_lock);
+  f->eax = (int) file_length (file);
+  lock_release (&filesys_lock);
 }
 
 void
-syscall_read(struct intr_frame *f) {
-  int fd = *(int*) get_argument(f,0);
-  void *buffer = get_argument (f,1);
-  off_t size = *(off_t*) get_argument (f,2);
+syscall_read (struct intr_frame *f) {
+  int fd = *(int*) get_argument (f, 0);
+  void *buffer = get_argument (f, 1);
+  off_t size = *(off_t*) get_argument (f, 2);
   lock_acquire (&filesys_lock);
-  f->eax = (int) file_read(fd_to_file(fd),buffer,size);
-  lock_release(&filesys_lock);
-
+  f->eax = (int) file_read (fd_to_file (fd), buffer, size);
+  lock_release (&filesys_lock);
 }
 
 void
-syscall_write(struct intr_frame *f) {
+syscall_write (struct intr_frame *f) {
   int fd = *(int *) get_argument (f, 0);
-  const void *buffer = get_argument (f, 1);
+  const void *buffer = *(void **) get_argument (f, 1);
   unsigned length = *(unsigned *) get_argument (f, 2);
-  lock_acquire (&filesys_lock);
 
+  // TODO: re implement locking code here
   /* change to not use magic. */
   if (fd == 1) {
-    putbuf (buffer, length);
-    lock_release (&filesys_lock);
-
+    putbuf ((char *) buffer, length);
     f->eax = length;
   } else if (fd == 0) {
-    lock_release(&filesys_lock);
     f->eax = 0;
-  } else {
-    lock_release(&filesys_lock);
-    f->eax = file_write(fd_to_file(fd),buffer,(off_t) length);
   }
-
 }
 
 void
-syscall_seek(struct intr_frame *f) {
-  int fd = *(int*) get_argument(f, 0);
-  off_t position = *(off_t*) get_argument (f,1);
+syscall_seek (struct intr_frame *f) {
+  int fd = *(int*) get_argument (f, 0);
+  off_t position = *(off_t*) get_argument (f, 1);
   lock_acquire (&filesys_lock);
-  file_seek(fd,position);
-  lock_release(&filesys_lock);
+  file_seek (fd, position);
+  lock_release (&filesys_lock);
 }
 
 void
-syscall_tell(struct intr_frame *f) {
-  int fd = *(int*) get_argument(f, 0);
+syscall_tell (struct intr_frame *f) {
+  int fd = *(int*) get_argument (f, 0);
   lock_acquire (&filesys_lock);
-  unsigned position = (unsigned) file_tell(fd_to_file(fd));
-  lock_release(&filesys_lock);
+  unsigned position = (unsigned) file_tell (fd_to_file (fd));
+  lock_release (&filesys_lock);
   f->eax = position;
 }
 
 void
-syscall_close(struct intr_frame *f) {
-  int fd = *(int*) get_argument(f, 0);
+syscall_close (struct intr_frame *f) {
+  int fd = *(int*) get_argument (f, 0);
   lock_acquire (&filesys_lock);
-  file_close(fd_to_file(fd));
-  lock_release(&filesys_lock);
+  file_close (fd_to_file (fd));
+  lock_release (&filesys_lock);
 }
