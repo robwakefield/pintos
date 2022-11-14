@@ -18,8 +18,15 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
+/* Passed argument struct */
+struct arguments {
+  int argc;
+  char *argv[PGSIZE / 2]; // TODO: Choose correct limit length
+};
+
 static thread_func start_process NO_RETURN;
-static bool load (const char *cmdline, void (**eip) (void), void **esp);
+static bool load (const struct arguments *args, void (**eip) (void), void **esp);
+static void *push_args_on_stack (const struct arguments *args);
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -39,26 +46,50 @@ process_execute (const char *file_name)
   strlcpy (fn_copy, file_name, PGSIZE);
 
   /* Parse command line input into program name and arguments. */
-  char *prog_name, *args;
-  prog_name = strtok_r (fn_copy, " ", &args);
+  struct arguments *args;
+  args = palloc_get_page (0); // TODO: free this somewhere
+  if (args == NULL)
+    return TID_ERROR;
 
-  /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (prog_name, PRI_DEFAULT, start_process, args);
-  if (tid == TID_ERROR) {
-    palloc_free_page (fn_copy); 
+  char *arg_val, *s_ptr;
+  int args_size; /* Ensure arguments are not too large to be placed on the stack */
+  for (arg_val = strtok_r (fn_copy, " ", &s_ptr); arg_val != NULL; arg_val = strtok_r (NULL, " ", &s_ptr)) {
+    args->argv[args->argc] = arg_val;
+    args->argc++;
+    args_size += strlen (arg_val);
   }
 
-  /* if new thread is valid -> disable interrupts and add thread into parents "child threads" list?? */
+  /* Check arguments will fit on stack 
+   * 4 bytes are reserved for word-align, argv, argc, return address */
+  if (args_size + args->argc + 4 > PGSIZE) {
+    printf ("Arguments are too large\n");
+    return TID_ERROR;
+  }
 
-  return tid;
+  /* Create a new thread to execute FILE_NAME. */
+  char *prog_name = args->argv[0]; 
+  tid = thread_create (prog_name, PRI_DEFAULT, start_process, args);
+
+  /* should parent process wait until child successfully loaded its executable? 
+    if so -> sema_down parents semaphore to block until child returns*/
+  if (tid == TID_ERROR) {
+    palloc_free_page (fn_copy); 
+  } else {
+    /* Sema down sema_load until load is succesful, parent has to wait until load is successful */
+    
+    // sema_down (&new_t->sema_load);
+    // list_push_back(&thread_current()->child_list, &new_t->child_elem);
+  }
+
+  return tid; /* also return load status? */
 }
 
 /* A thread function that loads a user process and starts it
    running. */
 static void
-start_process (void *file_name_)
+start_process (void *aux)
 {
-  char *file_name = file_name_;
+  struct arguments *args = (struct arguments *) aux;
   struct intr_frame if_;
   bool success;
 
@@ -67,12 +98,25 @@ start_process (void *file_name_)
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
+  success = load (args, &if_.eip, &if_.esp);
+
+  /* TESTING: Check if arguments were correctly pushed onto the stack. */
+  //hex_dump(if_.esp , if_.esp , PHYS_BASE – if_.esp , true);
+
 
   /* If load failed, quit. */
-  palloc_free_page (file_name);
+  palloc_free_page (args->argv[0]);
+
+  /* If load successful -> parent stops waiting. */
+  // sema_up (&thread_current ()->sema_load);
+
   if (!success) 
     thread_exit ();
+
+
+  /* Ensure executable of a running process cannot be written to,
+    deny writing to the open files of the running process? */
+  //file_deny_write(thread_current ()->file)
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -94,11 +138,43 @@ start_process (void *file_name_)
  * This function will be implemented in task 2.
  * For now, it does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) 
+process_wait (tid_t child_tid) 
 {
-  while (true) {
-    // infinite loop
+  struct thread *curr = thread_current ();
+  struct thread *child = NULL;
+  struct list_elem *temp_elem;
+
+  if(list_empty(&curr->child_list)) {
+    return -1;
   }
+  
+  /* Find child thread in the child list of the parent thread. */
+  for (temp_elem = list_begin (&curr->child_list); 
+       temp_elem != list_end (&curr->child_list); 
+       temp_elem = list_next (temp_elem))
+  {
+      struct thread *temp = list_entry (temp_elem, struct thread, child_elem);
+      
+      if (temp->tid == child_tid) {
+        child = temp;
+	      break;
+      }
+  }
+
+  if (child == NULL || child->parent != curr) {
+    return -1;
+  }
+
+  /* Remove child from parent's child_list so it cannot be waited on again. */
+  list_remove (&child->child_elem);
+  /* We can create new sema, to block thread while removing from list ?? 
+  then use sema and can also remove from list later, but have a boolean for child to see
+  if it was waited on before */
+
+  /* Block parent thread until child exits. */
+  sema_down (&child->sema_wait);
+
+  return child->exit_status;
 }
 
 /* Free the current process's resources. */
@@ -107,6 +183,8 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
+
+  sema_up (&cur->sema_wait);
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -205,7 +283,7 @@ struct Elf32_Phdr
 #define PF_W 2          /* Writable. */
 #define PF_R 4          /* Readable. */
 
-static bool setup_stack (void **esp);
+static bool setup_stack (const struct arguments *args, void **esp);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
@@ -216,8 +294,12 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
    and its initial stack pointer into *ESP.
    Returns true if successful, false otherwise. */
 bool
-load (const char *file_name, void (**eip) (void), void **esp) 
+load (const struct arguments *args, void (**eip) (void), void **esp) 
 {
+  if (args->argc == 0) {
+    return TID_ERROR; // TODO: is this correct behaviour?
+  }
+  char *file_name = args->argv[0]; 
   struct thread *t = thread_current ();
   struct Elf32_Ehdr ehdr;
   struct file *file = NULL;
@@ -312,7 +394,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
     }
 
   /* Set up stack. */
-  if (!setup_stack (esp))
+  if (!setup_stack (args, esp))
     goto done;
 
   /* Start address. */
@@ -451,7 +533,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
 static bool
-setup_stack (void **esp) 
+setup_stack (const struct arguments *args, void **esp) 
 {
   uint8_t *kpage;
   bool success = false;
@@ -460,12 +542,50 @@ setup_stack (void **esp)
   if (kpage != NULL) 
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-      if (success)
-        *esp = PHYS_BASE - 12;
-      else
+      if (success) {
+        *esp = push_args_on_stack (args);
+        // TODO: debugging code
+        printf ("Set up stack:\n");
+        hex_dump (PHYS_BASE - 64, kpage + PGSIZE - 64, 64, true);
+      } else {
         palloc_free_page (kpage);
+      }
     }
   return success;
+}
+
+static void *push_args_on_stack (const struct arguments *args) {
+  void *esp = PHYS_BASE;
+  char *arg_pointer[args->argc];
+  arg_pointer[args->argc] = 0; /* NULL pointer sentinel */
+  
+  /* Push arguments on to stack */
+  for (int i = args->argc - 1; i >= 0; i--) {
+    size_t len = strlen (args->argv[i]) + 1;
+    esp -= len;
+    strlcpy (esp, args->argv[i], len);
+    arg_pointer[i] = esp;
+  }
+  
+  /* Round esp down to multiple of 4 */
+  esp -= ((uint8_t) esp) % 4;
+
+  /* Push address of each argument (RTL) */
+  for (int i = args->argc; i >= 0; i--) {
+    esp -= sizeof (char *);
+    memcpy (esp, &arg_pointer[i], sizeof (char *));
+  }
+  
+  /* Push argv */
+  memcpy (esp - sizeof (char **), &esp, sizeof (char **));
+  esp -= sizeof(char **);
+  /* Push argc */
+  esp -= sizeof (uint32_t);
+  memcpy (esp, &args->argc, sizeof (uint32_t));
+  /* Push a fake return address */
+  esp -= sizeof (void *);
+  
+  return esp;
 }
 
 /* Adds a mapping from user virtual address UPAGE to kernel

@@ -91,24 +91,36 @@ struct thread
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority (Effective Priority) */
     int base_priority;                  /* Base Priority */
-    int nice;                           // nice value for advanced scheduler
+    int nice;                           /* Nice value for advanced scheduler */
     int recent_cpu;
     struct list_elem allelem;           /* List element for all threads list. */
 
-    struct lock *waiting_on;             /* The lock currently blocking the thread. */
+    struct lock *waiting_on;            /* The lock currently blocking the thread. */
     struct list locks;                  /* List of locks the thread is currently holding. */
 
     /* Shared between thread.c and synch.c. */
-    struct list_elem elem;              /* List element. */
+    struct list_elem elem;              /* List element. */ 
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
+
+    struct thread *parent;              /* Records parent's thread ID. */
+
+    struct list child_list;             /* List of all child threads of the process. */
+    struct list_elem child_elem;        /* For storing child thread in the parent's list of children. */
+
+    int exit_status;
+
+    struct list open_fds;               /* List of open file descriptors of the process. */
+
+    struct semaphore sema_wait;         /* Semaphore to be used when process is waiting. */
+
 #endif
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
-  };
+   };
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
