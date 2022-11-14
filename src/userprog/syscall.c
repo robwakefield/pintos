@@ -132,8 +132,8 @@ int file_to_fd (struct file *file){
 void
 syscall_create (struct intr_frame *f) {
 
-  const char *file = get_argument (f, 0);
-  unsigned int initial_size = get_argument (f, 1);
+  const char *file = *(char**) get_argument (f, 0);
+  unsigned int initial_size = *(unsigned int*) get_argument (f, 1);
 
   if (file == NULL) {
     syscall_exit (-1);
@@ -177,7 +177,7 @@ syscall_filesize (struct intr_frame *f) {
 void
 syscall_read (struct intr_frame *f) {
   int fd = *(int*) get_argument (f, 0);
-  void *buffer = get_argument (f, 1);
+  void *buffer = *(void**) get_argument (f, 1);
   off_t size = *(off_t*) get_argument (f, 2);
   lock_acquire (&filesys_lock);
   f->eax = (int) file_read (fd_to_file (fd), buffer, size);
@@ -187,7 +187,7 @@ syscall_read (struct intr_frame *f) {
 void
 syscall_write (struct intr_frame *f) {
   int fd = *(int *) get_argument (f, 0);
-  const void *buffer = *(void **) get_argument (f, 1);
+  const void *buffer = *(void**) get_argument (f, 1);
   unsigned length = *(unsigned *) get_argument (f, 2);
 
   // TODO: re implement locking code here
