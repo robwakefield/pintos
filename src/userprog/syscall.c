@@ -61,7 +61,7 @@ static void
 syscall_handler (struct intr_frame *f) 
 {
   /* Call appropriate system call function from system calls array. */
-  int syscall_num = *(int *) valid_pointer(f->esp);
+  int syscall_num = *(int *) valid_pointer (f->esp);
   syscall_handlers[syscall_num] (f);
 }
 
@@ -111,7 +111,7 @@ syscall_wait (struct intr_frame *f) {
   f->eax = process_wait (*(tid_t*) get_argument (f, 0));
 }
 
-struct file * fd_to_file (int fd){
+struct file *fd_to_file (int fd){
   return (struct file *) fd;
 }
 
@@ -150,7 +150,12 @@ syscall_open (struct intr_frame *f) {
   lock_acquire (&filesys_lock);
   struct file *file = filesys_open (name);
   lock_release (&filesys_lock);
-  f->eax = file_to_fd (file);
+  if (file == NULL) {
+    f->eax = -1;
+  } else {
+    f->eax = 4;
+  }
+  // TODO: change hard coded value
 }
 
 void
@@ -190,7 +195,7 @@ syscall_write (struct intr_frame *f) {
 
 void
 syscall_seek (struct intr_frame *f) {
-  int fd = *(int*) get_argument (f, 0);
+  int fd = *(struct file**) get_argument (f, 0);
   off_t position = *(off_t*) get_argument (f, 1);
   lock_acquire (&filesys_lock);
   file_seek (fd, position);
