@@ -149,21 +149,28 @@ syscall_create (struct intr_frame *f) {
 void
 syscall_remove(struct intr_frame *f) {
   const char *file = *(const char**) get_arg (f,0);
+  lock_acquire (&filesys_lock);
   bool removed = filesys_remove(file);
-  *f->eax = removed;
+  lock_release(&filesys_lock);
+  f->eax = removed;
 }
 
 void
 syscall_open(struct intr_frame *f) {
-  const char *file = *(const char**) get_arg (f,0);
-  *f->eax = file_to_fd(file);
+  const char *name = *(const char**) get_arg (f,0);
+  lock_acquire (&filesys_lock);
+  struct file *filesys_open (name);
+  lock_release(&filesys_lock);
+  f->eax = file_to_fd(file);
 }
 
 void
 syscall_filesize(struct intr_frame *f) {
   int fd = *(int*) get_arg (f,0);
   struct file *file = fd_to_file(fd);
-  *f->eax = (int) file_length(file);
+  lock_acquire (&filesys_lock);
+  f->eax = (int) file_length(file);
+  lock_release(&filesys_lock);
 }
 
 void
@@ -171,7 +178,9 @@ syscall_read(struct intr_frame *f) {
   int fd = *(int*) get_arg (f,0);
   void *buffer = get_arg(f,1);
   off_t size = *(off_t*);
-  *f->eax = (int) file_read(fd_to_file(fd),buffer,size);
+  lock_acquire (&filesys_lock);
+  f->eax = (int) file_read(fd_to_file(fd),buffer,size);
+  lock_release(&filesys_lock);
 
 }
 
@@ -199,18 +208,24 @@ void
 syscall_seek(struct intr_frame *f) {
   int fd = *(int*) get_arg (f, 0);
   off_t position = *(off_t*) get_arg(f,1);
+  lock_acquire (&filesys_lock);
   file_seek(fd,position);
+  lock_release(&filesys_lock);
 }
 
 void
 syscall_tell(struct intr_frame *f) {
   int fd = *(int*) get_arg (f, 0);
+  lock_acquire (&filesys_lock);
   unsigned position = (unsigned) file_tell(fd_to_file(fd));
-  *f->eax = position;
+  lock_release(&filesys_lock);
+  f->eax = position;
 }
 
 void
 syscall_close(struct intr_frame *f) {
   int fd = *(int*) get_arg (f, 0);
+  lock_acquire (&filesys_lock);
   file_close(fd_to_file(fd));
+  lock_release(&filesys_lock);
 }
