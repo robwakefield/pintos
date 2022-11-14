@@ -117,27 +117,27 @@ syscall_create(struct intr_frame *f) {
   const char *file = *(const char**) get_arg (f,0);
   off_t size = *(off_t*) get_arg (f,1);
   bool created = filesys_create(file,size);
-  f->eax = created;
+  *f->eax = created;
 }
 
 void
 syscall_remove(struct intr_frame *f) {
   const char *file = *(const char**) get_arg (f,0);
   bool removed = filesys_remove(file);
-  f->eax = removed;
+  *f->eax = removed;
 }
 
 void
 syscall_open(struct intr_frame *f) {
   const char *file = *(const char**) get_arg (f,0);
-  f->eax = file_to_fd(file);
+  *f->eax = file_to_fd(file);
 }
 
 void
 syscall_filesize(struct intr_frame *f) {
   int fd = *(int*) get_arg (f,0);
   struct file *file = fd_to_file(fd);
-  f->eax = (int) file_length(file);
+  *f->eax = (int) file_length(file);
 }
 
 void
@@ -145,7 +145,7 @@ syscall_read(struct intr_frame *f) {
   int fd = *(int*) get_arg (f,0);
   void *buffer = get_arg(f,1);
   off_t size = *(off_t*);
-  f->eax = (int) file_read(fd_to_file(fd),buffer,size);
+  *f->eax = (int) file_read(fd_to_file(fd),buffer,size);
 
 }
 
@@ -161,7 +161,7 @@ syscall_write(struct intr_frame *f) {
   }else if (fd != 0){
     r = (int) file_write(fd_to_file(fd), buffer,(off_t)length);
   }
-  f->eax = r;
+  *f->eax = r;
 }
 
 void
@@ -173,7 +173,9 @@ syscall_seek(struct intr_frame *f) {
 
 void
 syscall_tell(struct intr_frame *f) {
-  
+  int fd = *(int*) get_arg (f, 0);
+  unsigned position = (unsigned) file_tell(fd_to_file(fd));
+  *f->eax = position;
 }
 
 void
