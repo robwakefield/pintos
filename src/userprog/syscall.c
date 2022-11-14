@@ -83,7 +83,8 @@ void *get_arg (struct intr_frame *f, int i) {
 /* Implement all syscalls needed for Task 2 - User Programs */
 void
 syscall_halt(struct intr_frame *f) {
-
+  printf ("halting\n");
+  thread_exit ();
 }
 
 void
