@@ -6,6 +6,8 @@
 #include "userprog/pagedir.h"
 #include "threads/vaddr.h"
 #include "devices/shutdown.h"
+#include "filesys/file.h"
+#include "filesys/filesys.h"
 
 static void syscall_handler (struct intr_frame *);
 static void (*syscall_handlers[20]) (struct intr_frame *);     /* Array of function pointers so syscall handlers. */
@@ -148,7 +150,7 @@ syscall_create (struct intr_frame *f) {
 
 void
 syscall_remove(struct intr_frame *f) {
-  const char *file = *(const char**) get_arg (f,0);
+  const char *file = *(const char**) get_argument(f,0);
   lock_acquire (&filesys_lock);
   bool removed = filesys_remove(file);
   lock_release(&filesys_lock);
@@ -157,16 +159,17 @@ syscall_remove(struct intr_frame *f) {
 
 void
 syscall_open(struct intr_frame *f) {
-  const char *name = *(const char**) get_arg (f,0);
+  const char *name = *(const char**) get_argument(f,0);
   lock_acquire (&filesys_lock);
-  struct file *filesys_open (name);
+  struct file *file = filesys_open (name);
   lock_release(&filesys_lock);
   f->eax = file_to_fd(file);
+
 }
 
 void
 syscall_filesize(struct intr_frame *f) {
-  int fd = *(int*) get_arg (f,0);
+  int fd = *(int*) get_argument(f,0);
   struct file *file = fd_to_file(fd);
   lock_acquire (&filesys_lock);
   f->eax = (int) file_length(file);
@@ -175,9 +178,9 @@ syscall_filesize(struct intr_frame *f) {
 
 void
 syscall_read(struct intr_frame *f) {
-  int fd = *(int*) get_arg (f,0);
-  void *buffer = get_arg(f,1);
-  off_t size = *(off_t*);
+  int fd = *(int*) get_argument(f,0);
+  void *buffer = get_argument (f,1);
+  off_t size = *(off_t*) get_argument (f,2);
   lock_acquire (&filesys_lock);
   f->eax = (int) file_read(fd_to_file(fd),buffer,size);
   lock_release(&filesys_lock);
@@ -202,15 +205,15 @@ syscall_write(struct intr_frame *f) {
     f->eax = 0;
   } else {
     lock_release(&filesys_lock);
-    f->eac = file_write(fd_to_file(fd),buffer,(off_t)lenght);
+    f->eax = file_write(fd_to_file(fd),buffer,(off_t) length);
   }
 
 }
 
 void
 syscall_seek(struct intr_frame *f) {
-  int fd = *(int*) get_arg (f, 0);
-  off_t position = *(off_t*) get_arg(f,1);
+  int fd = *(int*) get_argument(f, 0);
+  off_t position = *(off_t*) get_argument (f,1);
   lock_acquire (&filesys_lock);
   file_seek(fd,position);
   lock_release(&filesys_lock);
@@ -218,7 +221,7 @@ syscall_seek(struct intr_frame *f) {
 
 void
 syscall_tell(struct intr_frame *f) {
-  int fd = *(int*) get_arg (f, 0);
+  int fd = *(int*) get_argument(f, 0);
   lock_acquire (&filesys_lock);
   unsigned position = (unsigned) file_tell(fd_to_file(fd));
   lock_release(&filesys_lock);
@@ -227,7 +230,7 @@ syscall_tell(struct intr_frame *f) {
 
 void
 syscall_close(struct intr_frame *f) {
-  int fd = *(int*) get_arg (f, 0);
+  int fd = *(int*) get_argument(f, 0);
   lock_acquire (&filesys_lock);
   file_close(fd_to_file(fd));
   lock_release(&filesys_lock);
