@@ -166,7 +166,9 @@ syscall_write(struct intr_frame *f) {
 
 void
 syscall_seek(struct intr_frame *f) {
-  
+  int fd = *(int*) get_arg (f, 0);
+  off_t position = *(off_t*) get_arg(f,1);
+  file_seek(fd,position);
 }
 
 void
