@@ -21,7 +21,7 @@
 /* Passed argument struct */
 struct arguments {
   int argc;
-  char *argv[128]; // TODO: Choose correct limit length
+  char *argv[PGSIZE / 2]; // TODO: Choose correct limit length
 };
 
 static thread_func start_process NO_RETURN;
@@ -52,9 +52,18 @@ process_execute (const char *file_name)
     return TID_ERROR;
 
   char *arg_val, *s_ptr;
+  int args_size; /* Ensure arguments are not too large to be placed on the stack */
   for (arg_val = strtok_r (fn_copy, " ", &s_ptr); arg_val != NULL; arg_val = strtok_r (NULL, " ", &s_ptr)) {
     args->argv[args->argc] = arg_val;
     args->argc++;
+    args_size += strlen (arg_val);
+  }
+
+  /* Check arguments will fit on stack 
+   * 4 bytes are reserved for word-align, argv, argc, return address */
+  if (args_size + args->argc + 4 > PGSIZE) {
+    printf ("Arguments are too large\n");
+    return TID_ERROR;
   }
 
   /* Create a new thread to execute FILE_NAME. */
@@ -63,8 +72,6 @@ process_execute (const char *file_name)
   if (tid == TID_ERROR) {
     palloc_free_page (fn_copy); 
   }
-
-  /* if new thread is valid -> disable interrupts and add thread into parents "child threads" list?? */
 
   return tid;
 }
