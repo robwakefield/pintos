@@ -11,7 +11,7 @@ static void syscall_handler (struct intr_frame *);
 static void (*syscall_handlers[20]) (struct intr_frame *);     /* Array of function pointers so syscall handlers. */
 static bool valid_pointer (void *);
 
-void get_arg (struct intr_frame *f, int i);
+void *get_argument (struct intr_frame *f, int i);
 
 /* System call handler functions. */
 void syscall_halt (struct intr_frame *);
@@ -59,12 +59,11 @@ syscall_handler (struct intr_frame *f)
   printf ("system call!\n");
 
   /* Get system call number. */
-  int syscall_num = *(int*)f->esp;
+  int syscall_num = *(int *)f->esp;
 
   /* Call appropriate system call function from system calls array. */
   syscall_handlers[syscall_num](f);
 
-  /* handle return value in eax*/
 }
 
 /* Returns true if the pointer is a valid user pointer */
@@ -80,7 +79,7 @@ valid_pointer (void *p)
 
 /* Get ith argument */
 void *get_argument (struct intr_frame *f, int i) {
-  void *a = f->esp + (4 * (i + 1));
+  void *a = f->esp + ((i + 1));
   if (valid_pointer (a)) {
     return a;
   }
@@ -94,7 +93,7 @@ syscall_halt (struct intr_frame *f) {
 
 void
 syscall_exit (struct intr_frame *f) {
-  int status = get_arg (f, 0);
+  int status = get_argument (f, 0);
 
   thread_current ()->exit_status = status;
 
@@ -104,7 +103,7 @@ syscall_exit (struct intr_frame *f) {
 
 void
 syscall_exec(struct intr_frame *f) {
-  const char *cmd_line = get_arg (f, 0);
+  const char *cmd_line = get_argument (f, 0);
 
   if (!valid_pointer (cmd_line)) {
     syscall_exit(-1);
@@ -117,24 +116,26 @@ syscall_exec(struct intr_frame *f) {
 
 void
 syscall_wait (struct intr_frame *f) {
-  /* check if first arg is tid_t ?? */
-  return process_wait (get_arg (f, 0));
+  int ret = process_wait (get_argument (f, 0));
+
+  f->eax = ret;
 }
 
 void
 syscall_create (struct intr_frame *f) {
 
-  const char *file = get_arg (f, 0);
-  unsigned int initial_size = get_arg (f, 1);
+  const char *file = get_argument (f, 0);
+  unsigned int initial_size = get_argument (f, 1);
 
   if (file == NULL) {
-    //sys_exit(f);
+    syscall_exit (-1);
   }
 
   lock_acquire (&filesys_lock);
-  bool ret = filesys_create(file, initial_size);
+  bool success = filesys_create(file, initial_size);
   lock_release (&filesys_lock);
 
+  f->eax = success;
 }
 
 void
@@ -159,12 +160,22 @@ syscall_read(struct intr_frame *f) {
 
 void
 syscall_write(struct intr_frame *f) {
-  int fd = *(int*) get_argument (f, 0);
-  const void* buffer = get_argument (f, 1);
-  unsigned length = *(unsigned*) get_argument (f, 2);
+  int fd = *(int *) get_argument (f, 0);
+  const void *buffer = get_argument (f, 1);
+  unsigned length = *(unsigned *) get_argument (f, 2);
+  lock_acquire (&filesys_lock);
+
+  /* change to not use magic. */
   if (fd == 1) {
     putbuf (buffer, length);
+    lock_release (&filesys_lock);
+
+    f->eax = length;
+  } else if (fd == 0) {
+    lock_release(&filesys_lock);
+    f->eax = 0;
   }
+
 }
 
 void

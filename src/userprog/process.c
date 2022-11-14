@@ -142,29 +142,24 @@ process_wait (tid_t child_tid)
 {
   struct thread *curr = thread_current ();
   struct thread *child = NULL;
-  struct list_elem *elem;
+  struct list_elem *temp_elem;
 
   if(list_empty(&curr->child_list)) {
     return -1;
   }
   
   /* Find child thread in the child list of the parent thread. */
-  for (elem = list_begin (&curr->child_list); 
-       elem != list_end (&curr->child_list); 
-       elem = list_next (elem))
+  for (temp_elem = list_begin (&curr->child_list); 
+       temp_elem != list_end (&curr->child_list); 
+       temp_elem = list_next (temp_elem))
   {
-      struct thread *temp = list_entry (elem, struct thread, elem);
+      struct thread *temp = list_entry (temp_elem, struct thread, child_elem);
       
       if (temp->tid == child_tid) {
         child = temp;
 	      break;
       }
   }
-
-  /* If implementing ZOMBIE status,
-  if (child->status == ZOMBIE) {
-    return child->exit_code;
-  }*/
 
   if (child == NULL || child->parent != curr) {
     return -1;
