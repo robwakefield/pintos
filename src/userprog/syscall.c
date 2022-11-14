@@ -11,7 +11,7 @@ static void syscall_handler (struct intr_frame *);
 static void (*syscall_handlers[20]) (struct intr_frame *);     /* Array of function pointers so syscall handlers. */
 static bool valid_pointer (void *);
 
-void get_arguments(struct intr_frame *f, int *args, int n);
+void get_arg (struct intr_frame *f, int i);
 
 /* System call handler functions. */
 void syscall_halt (struct intr_frame *);
@@ -58,10 +58,10 @@ syscall_handler (struct intr_frame *f)
 {
   printf ("system call!\n");
 
-  /* get system call number */
+  /* Get system call number. */
   int syscall_num = *(int*)f->esp;
 
-  /* call syscall from array syscall_handlers */
+  /* Call appropriate system call function from system calls array. */
   syscall_handlers[syscall_num](f);
 
   /* handle return value in eax*/
@@ -84,7 +84,6 @@ void *get_arg (struct intr_frame *f, int i) {
   if (valid_pointer (a)) {
     return a;
   }
-  // return valid_pointer (a) ?
 }
 
 /* Implement all syscalls needed for Task 2 - User Programs */
@@ -95,8 +94,7 @@ syscall_halt (struct intr_frame *f) {
 
 void
 syscall_exit (struct intr_frame *f) {
-  /* Set status = get_argument (f, 0); */
-  int status = 0;
+  int status = get_arg (f, 0);
 
   thread_current ()->exit_status = status;
 
@@ -106,7 +104,7 @@ syscall_exit (struct intr_frame *f) {
 
 void
 syscall_exec(struct intr_frame *f) {
-  const char *cmd_line = get_argument (f, 0);
+  const char *cmd_line = get_arg (f, 0);
 
   if (!valid_pointer (cmd_line)) {
     syscall_exit(-1);
@@ -120,14 +118,14 @@ syscall_exec(struct intr_frame *f) {
 void
 syscall_wait (struct intr_frame *f) {
   /* check if first arg is tid_t ?? */
-  return process_wait (get_argument (f, 0));
+  return process_wait (get_arg (f, 0));
 }
 
 void
 syscall_create (struct intr_frame *f) {
 
-  const char *file = get_argument (f, 0);
-  unsigned int initial_size = get_argument (f, 1);
+  const char *file = get_arg (f, 0);
+  unsigned int initial_size = get_arg (f, 1);
 
   if (file == NULL) {
     sys_exit(f);
@@ -137,8 +135,6 @@ syscall_create (struct intr_frame *f) {
   bool ret = filesys_create(file, initial_size);
   lock_release (&filesys_lock);
 
-  // should we return bool based on success of filesys_create ??
-  
 }
 
 void
