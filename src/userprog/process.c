@@ -105,7 +105,7 @@ start_process (void *aux)
 
 
   /* If load failed, quit. */
-  palloc_free_page (file_name);
+  palloc_free_page (args->argv[0]);
 
   /* If load successful -> parent stops waiting. */
   // sema_up (&thread_current ()->sema_load);

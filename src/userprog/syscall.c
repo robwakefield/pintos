@@ -11,7 +11,7 @@ static void syscall_handler (struct intr_frame *);
 static void (*syscall_handlers[20]) (struct intr_frame *);     /* Array of function pointers so syscall handlers. */
 static bool valid_pointer (void *);
 
-void get_arguments(struct intr_frame *f, int *args, int n);
+void *get_argument(struct intr_frame *f, int n);
 
 /* System call handler functions. */
 void syscall_halt (struct intr_frame *);
@@ -79,7 +79,7 @@ valid_pointer (void *p)
 }
 
 /* Get ith argument */
-void *get_arg (struct intr_frame *f, int i) {
+void *get_argument (struct intr_frame *f, int i) {
   void *a = f->esp + (4 * (i + 1));
   if (valid_pointer (a)) {
     return a;
@@ -130,7 +130,7 @@ syscall_create (struct intr_frame *f) {
   unsigned int initial_size = get_argument (f, 1);
 
   if (file == NULL) {
-    sys_exit(f);
+    //sys_exit(f);
   }
 
   lock_acquire (&filesys_lock);
@@ -163,9 +163,9 @@ syscall_read(struct intr_frame *f) {
 
 void
 syscall_write(struct intr_frame *f) {
-  int fd = *(int*) get_arg (f, 0);
-  const void* buffer = get_arg (f, 1);
-  unsigned length = *(unsigned*) get_arg (f, 2);
+  int fd = *(int*) get_argument (f, 0);
+  const void* buffer = get_argument (f, 1);
+  unsigned length = *(unsigned*) get_argument (f, 2);
   if (fd == 1) {
     putbuf (buffer, length);
   }
