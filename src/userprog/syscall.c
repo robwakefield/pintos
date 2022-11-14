@@ -3,8 +3,9 @@
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
-#include "userprog/pagedir.h"
 #include "threads/vaddr.h"
+#include "userprog/pagedir.h"
+#include "userprog/process.h"
 #include "devices/shutdown.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
@@ -85,7 +86,7 @@ void *get_argument (struct intr_frame *f, int i) {
 }
 
 void
-syscall_halt (struct intr_frame *f) {
+syscall_halt (struct intr_frame *f UNUSED) {
   shutdown_power_off();
 }
 
@@ -102,11 +103,12 @@ syscall_exec (struct intr_frame *f) {
   lock_acquire (&filesys_lock);
   tid_t child_tid = process_execute (cmd_line);
   lock_release (&filesys_lock);
+  f->eax = child_tid;
 }
 
 void
 syscall_wait (struct intr_frame *f) {
-  f->eax = process_wait (get_argument (f, 0));
+  f->eax = process_wait (*(tid_t*) get_argument (f, 0));
 }
 
 struct file * fd_to_file (int fd){
@@ -119,14 +121,11 @@ int file_to_fd (struct file *file){
 
 void
 syscall_create (struct intr_frame *f) {
-
-  hex_dump (f->esp, f->esp, 32, true);
   const char *file = *(char**) get_argument (f, 0);
-  printf("file:%s.\n", file);
   unsigned int initial_size = *(unsigned int*) get_argument (f, 1);
 
   if (file == NULL) {
-    syscall_exit (-1);
+    exit_with_code (-1);
   }
 
   lock_acquire (&filesys_lock);
