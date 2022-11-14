@@ -69,11 +69,19 @@ process_execute (const char *file_name)
   /* Create a new thread to execute FILE_NAME. */
   char *prog_name = args->argv[0]; 
   tid = thread_create (prog_name, PRI_DEFAULT, start_process, args);
+
+  /* should parent process wait until child successfully loaded its executable? 
+    if so -> sema_down parents semaphore to block until child returns*/
   if (tid == TID_ERROR) {
     palloc_free_page (fn_copy); 
+  } else {
+    /* Sema down sema_load until load is succesful, parent has to wait until load is successful */
+    
+    // sema_down (&new_t->sema_load);
+    // list_push_back(&thread_current()->child_list, &new_t->child_elem);
   }
 
-  return tid;
+  return tid; /* also return load status? */
 }
 
 /* A thread function that loads a user process and starts it
@@ -92,10 +100,23 @@ start_process (void *aux)
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (args, &if_.eip, &if_.esp);
 
+  /* TESTING: Check if arguments were correctly pushed onto the stack. */
+  //hex_dump(if_.esp , if_.esp , PHYS_BASE – if_.esp , true);
+
+
   /* If load failed, quit. */
-  palloc_free_page (args->argv[0]);
+  palloc_free_page (file_name);
+
+  /* If load successful -> parent stops waiting. */
+  // sema_up (&thread_current ()->sema_load);
+
   if (!success) 
     thread_exit ();
+
+
+  /* Ensure executable of a running process cannot be written to,
+    deny writing to the open files of the running process? */
+  //file_deny_write(thread_current ()->file)
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -117,11 +138,48 @@ start_process (void *aux)
  * This function will be implemented in task 2.
  * For now, it does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) 
+process_wait (tid_t child_tid) 
 {
-  while (true) {
-    // infinite loop
+  struct thread *curr = thread_current ();
+  struct thread *child = NULL;
+  struct list_elem *elem;
+
+  if(list_empty(&curr->child_list)) {
+    return -1;
   }
+  
+  /* Find child thread in the child list of the parent thread. */
+  for (elem = list_begin (&curr->child_list); 
+       elem != list_end (&curr->child_list); 
+       elem = list_next (elem))
+  {
+      struct thread *temp = list_entry (elem, struct thread, elem);
+      
+      if (temp->tid == child_tid) {
+        child = temp;
+	      break;
+      }
+  }
+
+  /* If implementing ZOMBIE status,
+  if (child->status == ZOMBIE) {
+    return child->exit_code;
+  }*/
+
+  if (child == NULL || child->parent != curr) {
+    return -1;
+  }
+
+  /* Remove child from parent's child_list so it cannot be waited on again. */
+  list_remove (&child->child_elem);
+  /* We can create new sema, to block thread while removing from list ?? 
+  then use sema and can also remove from list later, but have a boolean for child to see
+  if it was waited on before */
+
+  /* Block parent thread until child exits. */
+  sema_down (&child->sema_wait);
+
+  return child->exit_status;
 }
 
 /* Free the current process's resources. */
@@ -130,6 +188,8 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
+
+  sema_up (&cur->sema_wait);
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
