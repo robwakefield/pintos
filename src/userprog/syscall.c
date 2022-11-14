@@ -200,6 +200,9 @@ syscall_write(struct intr_frame *f) {
   } else if (fd == 0) {
     lock_release(&filesys_lock);
     f->eax = 0;
+  } else {
+    lock_release(&filesys_lock);
+    f->eac = file_write(fd_to_file(fd),buffer,(off_t)lenght);
   }
 
 }
