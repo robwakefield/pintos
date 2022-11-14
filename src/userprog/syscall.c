@@ -11,6 +11,7 @@
 
 static void syscall_handler (struct intr_frame *);
 static void (*syscall_handlers[20]) (struct intr_frame *);     /* Array of function pointers so syscall handlers. */
+static void exit_with_code (int);
 static void *valid_pointer (void *);
 
 void *get_argument (struct intr_frame *f, int i);
@@ -58,27 +59,24 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f) 
 {
-
-  /* Get system call number. */
-  int syscall_num = *(int *) valid_pointer(f->esp);
-  //printf ("system call! %d\n", syscall_num);
-
   /* Call appropriate system call function from system calls array. */
+  int syscall_num = *(int *) valid_pointer(f->esp);
   syscall_handlers[syscall_num] (f);
-
 }
 
 /* Returns true if the pointer is a valid user pointer */
 void *valid_pointer (void *p)
 {
   if (!is_user_vaddr (p) || pagedir_get_page (thread_current ()->pagedir, p) == NULL) {
-    // TODO: remove duplication from syscall_exit
-    int status = -1;
-    thread_current ()->exit_status = status;
-    printf ("%s: exit(%d)\n", thread_current ()->name, status);
-    thread_exit ();
+    exit_with_code (-1);
   }
   return p; 
+}
+
+static void exit_with_code (int status) {
+  thread_current ()->exit_status = status;
+  printf ("%s: exit(%d)\n", thread_current ()->name, status);
+  thread_exit ();
 }
 
 /* Get ith argument */
@@ -86,7 +84,6 @@ void *get_argument (struct intr_frame *f, int i) {
   return valid_pointer(f->esp + (i + 1) * 4);
 }
 
-/* Implement all syscalls needed for Task 2 - User Programs */
 void
 syscall_halt (struct intr_frame *f) {
   shutdown_power_off();
@@ -95,11 +92,7 @@ syscall_halt (struct intr_frame *f) {
 void
 syscall_exit (struct intr_frame *f) {
   int status = *(int*) get_argument (f, 0);
-
-  thread_current ()->exit_status = status;
-
-  printf ("%s: exit(%d)\n", thread_current ()->name, status);
-  thread_exit ();
+  exit_with_code (status);
 }
 
 void
@@ -127,7 +120,9 @@ int file_to_fd (struct file *file){
 void
 syscall_create (struct intr_frame *f) {
 
+  hex_dump (f->esp, f->esp, 32, true);
   const char *file = *(char**) get_argument (f, 0);
+  printf("file:%s.\n", file);
   unsigned int initial_size = *(unsigned int*) get_argument (f, 1);
 
   if (file == NULL) {
