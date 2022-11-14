@@ -143,7 +143,7 @@ syscall_filesize(struct intr_frame *f) {
 void
 syscall_read(struct intr_frame *f) {
   int fd = *(int*) get_arg (f,0);
-  void *buffer = *(void**) get_arg(f,1);
+  void *buffer = get_arg(f,1);
   off_t size = *(off_t*);
   f->eax = (int) file_read(fd_to_file(fd),buffer,size);
 
@@ -154,9 +154,14 @@ syscall_write(struct intr_frame *f) {
   int fd = *(int*) get_arg (f, 0);
   const void* buffer = get_arg (f, 1);
   unsigned length = *(unsigned*) get_arg (f, 2);
+  int r = 0;
   if (fd == 1) {
     putbuf (buffer, length);
+    r = (int) lenght;
+  }else if (fd != 0){
+    r = (int) file_write(fd_to_file(fd), buffer,(off_t)length);
   }
+  f->eax = r;
 }
 
 void
