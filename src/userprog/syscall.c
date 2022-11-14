@@ -11,7 +11,7 @@
 
 static void syscall_handler (struct intr_frame *);
 static void (*syscall_handlers[20]) (struct intr_frame *);     /* Array of function pointers so syscall handlers. */
-static bool valid_pointer (void *);
+static void *valid_pointer (void *);
 
 void *get_argument (struct intr_frame *f, int i);
 
@@ -60,7 +60,7 @@ syscall_handler (struct intr_frame *f)
 {
 
   /* Get system call number. */
-  int syscall_num = *(int *) f->esp;
+  int syscall_num = *(int *) valid_pointer(f->esp);
   //printf ("system call! %d\n", syscall_num);
 
   /* Call appropriate system call function from system calls array. */
@@ -69,20 +69,21 @@ syscall_handler (struct intr_frame *f)
 }
 
 /* Returns true if the pointer is a valid user pointer */
-static bool
-valid_pointer (void *p)
+void *valid_pointer (void *p)
 {
-  if (pagedir_get_page (thread_current ()->pagedir, p) == NULL) {
-    return false;
+  if (pagedir_get_page (thread_current ()->pagedir, p) == NULL || !is_user_vaddr (p)) {
+    // TODO: remove duplication from sycall_exit
+    int status = -1;
+    thread_current ()->exit_status = status;
+    printf ("%s: exit(%d)\n", thread_current ()->name, status);
+    thread_exit ();
   }
-  return is_user_vaddr (p);
-  /* TODO: handle invalid pointer (terminate thread) */
+  return p; 
 }
 
 /* Get ith argument */
 void *get_argument (struct intr_frame *f, int i) {
-  return f->esp + (i + 1) * 4;
-  // TODO: check if its a valid pointer here?
+  return valid_pointer(f->esp + (i + 1) * 4);
 }
 
 /* Implement all syscalls needed for Task 2 - User Programs */
@@ -105,10 +106,6 @@ void
 syscall_exec (struct intr_frame *f) {
   const char *cmd_line = get_argument (f, 0);
 
-  if (!valid_pointer (cmd_line)) {
-    syscall_exit(-1);
-  }
-
   lock_acquire (&filesys_lock);
   tid_t child_tid = process_execute (cmd_line);
   lock_release (&filesys_lock);
@@ -116,9 +113,7 @@ syscall_exec (struct intr_frame *f) {
 
 void
 syscall_wait (struct intr_frame *f) {
-  int ret = process_wait (get_argument (f, 0));
-
-  f->eax = ret;
+  f->eax = process_wait (get_argument (f, 0));
 }
 
 struct file * fd_to_file (int fd){
@@ -162,7 +157,6 @@ syscall_open (struct intr_frame *f) {
   struct file *file = filesys_open (name);
   lock_release (&filesys_lock);
   f->eax = file_to_fd (file);
-
 }
 
 void
