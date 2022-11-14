@@ -5,13 +5,15 @@
 #include "threads/thread.h"
 #include "userprog/pagedir.h"
 #include "threads/vaddr.h"
+#include "devices/shutdown.h"
 
 static void syscall_handler (struct intr_frame *);
 static void (*syscall_handlers[20]) (struct intr_frame *);     /* Array of function pointers so syscall handlers. */
 static bool valid_pointer (void *);
 
+void get_arguments(struct intr_frame *f, int *args, int n);
+
 /* System call handler functions. */
-/* do these need to be static or not? */
 void syscall_halt (struct intr_frame *);
 void syscall_exit (struct intr_frame *);
 void syscall_exec (struct intr_frame *);
@@ -26,9 +28,14 @@ void syscall_seek (struct intr_frame *);
 void syscall_tell (struct intr_frame *);
 void syscall_close (struct intr_frame *);
 
+/* Lock for the file system, ensures multiple processes cannot edit file at the same time. */
+struct lock filesys_lock;
+
 void
 syscall_init (void) 
 {
+  lock_init(&filesys_lock);
+
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
   
   syscall_handlers[SYS_HALT] = &syscall_halt;
@@ -78,24 +85,55 @@ void *get_first_arg (struct intr_frame *f) {
 
 /* Implement all syscalls needed for Task 2 - User Programs */
 void
-syscall_halt(struct intr_frame *f) {
-
+syscall_halt (struct intr_frame *f) {
+  shutdown_power_off();
 }
 
 void
-syscall_exit(struct intr_frame *f) {
-  int status = get_first_arg;
+syscall_exit (struct intr_frame *f) {
+  /* Set status = get_argument (f, 0); */
+  int status = 0;
+
+  thread_current ()->exit_status = status;
+
   printf ("%s: exit(%d)\n", thread_current ()->name, status);
   thread_exit ();
 }
 
 void
 syscall_exec(struct intr_frame *f) {
+  const char *cmd_line = get_argument (f, 0);
 
+  if (!valid_pointer (cmd_line)) {
+    syscall_exit(-1);
+  }
+
+  lock_acquire (&filesys_lock);
+  tid_t child_tid = process_execute (cmd_line);
+  lock_release (&filesys_lock);
 }
 
 void
-syscall_create(struct intr_frame *f) {
+syscall_wait (struct intr_frame *f) {
+  /* check if first arg is tid_t ?? */
+  return process_wait (get_argument (f, 0));
+}
+
+void
+syscall_create (struct intr_frame *f) {
+
+  const char *file = get_argument (f, 0);
+  unsigned int initial_size = get_argument (f, 1);
+
+  if (file == NULL) {
+    sys_exit(f);
+  }
+
+  lock_acquire (&filesys_lock);
+  bool ret = filesys_create(file, initial_size);
+  lock_release (&filesys_lock);
+
+  // should we return bool based on success of filesys_create ??
   
 }
 
