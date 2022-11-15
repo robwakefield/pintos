@@ -98,11 +98,8 @@ syscall_exit (struct intr_frame *f) {
 
 void
 syscall_exec (struct intr_frame *f) {
-  const char *cmd_line = get_argument (f, 0);
-
-  lock_acquire (&filesys_lock);
+  const char *cmd_line = *(char**) get_argument (f, 0);
   tid_t child_tid = process_execute (cmd_line);
-  lock_release (&filesys_lock);
   f->eax = child_tid;
 }
 
