@@ -11,6 +11,7 @@
 
 static void syscall_handler (struct intr_frame *);
 static void (*syscall_handlers[20]) (struct intr_frame *);     /* Array of function pointers so syscall handlers. */
+static void exit_with_code (int);
 static bool valid_pointer (void *);
 
 void *get_argument (struct intr_frame *f, int i);
@@ -58,32 +59,35 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f) 
 {
-
-  /* Get system call number. */
-  int syscall_num = *(int *) f->esp;
-  //printf ("system call! %d\n", syscall_num);
-
   /* Call appropriate system call function from system calls array. */
+  int syscall_num = *(int *) valid_pointer (f->esp);
   syscall_handlers[syscall_num] (f);
-
 }
 
 /* Returns true if the pointer is a valid user pointer */
 static bool
 valid_pointer (void *p)
 {
-  if (pagedir_get_page (thread_current ()->pagedir, p) == NULL) {
-    return false;
+  if (!is_user_vaddr (p) || pagedir_get_page (thread_current ()->pagedir, p) == NULL) {
+    exit_with_code (-1);
   }
-  return is_user_vaddr (p);
-  /* TODO: handle invalid pointer (terminate thread) */
+  return p; 
 }
 
-/* Get ith argument */
-void *get_argument (struct intr_frame *f, int i) {
-  return f->esp + (i + 1) * 4;
-  // TODO: check if its a valid pointer here?
+static void 
+exit_with_code (int status) {
+  thread_current ()->exit_status = status;
+  printf ("%s: exit(%d)\n", thread_current ()->name, status);
+  thread_exit ();
 }
+
+
+/* Get ith argument */
+void *
+get_argument (struct intr_frame *f, int i) {
+  return valid_pointer(f->esp + (i + 1) * 4);
+}
+
 
 /* Implement all syscalls needed for Task 2 - User Programs */
 void
@@ -93,33 +97,23 @@ syscall_halt (struct intr_frame *f) {
 
 void
 syscall_exit (struct intr_frame *f) {
-
-  int status = (f == NULL) ? (-1) : *(int*) get_argument (f, 0);
-
-  thread_current ()->exit_status = status;
-
-  printf ("%s: exit(%d)\n", thread_current ()->name, status);
-  thread_exit ();
+  int status = *(int*) get_argument (f, 0);
+  exit_with_code (status);
 }
 
 void
 syscall_exec (struct intr_frame *f) {
   const char *cmd_line = get_argument (f, 0);
 
-  if (!valid_pointer (cmd_line)) {
-    syscall_exit (NULL);
-  }
-
   lock_acquire (&filesys_lock);
   tid_t child_tid = process_execute (cmd_line);
   lock_release (&filesys_lock);
+  f->eax = child_tid;
 }
 
 void
 syscall_wait (struct intr_frame *f) {
-  int ret = process_wait (get_argument (f, 0));
-
-  f->eax = ret;
+    f->eax = process_wait (*(tid_t*) get_argument (f, 0));
 }
 
 struct file * fd_to_file (int fd){
@@ -132,12 +126,11 @@ int file_to_fd (struct file *file){
 
 void
 syscall_create (struct intr_frame *f) {
-
-  const char *file = get_argument (f, 0);
-  unsigned int initial_size = get_argument (f, 1);
+  const char *file = *(char**) get_argument (f, 0);
+  unsigned int initial_size = *(unsigned int*) get_argument (f, 1);
 
   if (file == NULL) {
-    syscall_exit (NULL);
+    exit_with_code (-1);
   }
 
   lock_acquire (&filesys_lock);
@@ -162,8 +155,12 @@ syscall_open (struct intr_frame *f) {
   lock_acquire (&filesys_lock);
   struct file *file = filesys_open (name);
   lock_release (&filesys_lock);
-  f->eax = file_to_fd (file);
-
+  if (file == NULL) {
+    f->eax = -1;
+  } else {
+    f->eax = 4;
+  }
+  // TODO: change hard coded value
 }
 
 void
