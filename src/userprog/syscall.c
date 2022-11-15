@@ -110,29 +110,25 @@ syscall_wait (struct intr_frame *f) {
   f->eax = process_wait (*(tid_t*) get_argument (f, 0));
 }
 
-struct file * table[32] = {0};
+struct file *table[32] = {0};
 
 struct file *fd_to_file (int fd){
-  if (table[fd - 2] == NULL){
+  if (fd < 0 || fd >= 32 || table[fd - 2] == NULL) {
     return NULL;
-  }else{
+  } else {
     return table[fd - 2];
   }
 }
 
 int file_to_fd (struct file *file){
-  for(int i = 0;i<32;i++){
-    if(table[i] == 0){
+  for (int i = 0; i < 32; i++) {
+    if (table[i] == 0) {
       table[i] = file;
       return i + 2;
     }
   }
   return -1;
 }
-
-
-
-
 
 void
 syscall_create (struct intr_frame *f) {
@@ -250,7 +246,6 @@ void
 syscall_close (struct intr_frame *f) {
   int fd = *(int*) get_argument (f, 0);
   if(fd > 2){
-    
     lock_acquire (&filesys_lock);
     file_close (fd_to_file (fd));
     lock_release (&filesys_lock);
