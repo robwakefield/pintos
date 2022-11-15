@@ -3,8 +3,9 @@
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
-#include "userprog/pagedir.h"
 #include "threads/vaddr.h"
+#include "userprog/pagedir.h"
+#include "userprog/process.h"
 #include "devices/shutdown.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
@@ -12,7 +13,7 @@
 static void syscall_handler (struct intr_frame *);
 static void (*syscall_handlers[20]) (struct intr_frame *);     /* Array of function pointers so syscall handlers. */
 static void exit_with_code (int);
-static bool valid_pointer (void *);
+static void *valid_pointer (void *);
 
 void *get_argument (struct intr_frame *f, int i);
 
@@ -65,8 +66,7 @@ syscall_handler (struct intr_frame *f)
 }
 
 /* Returns true if the pointer is a valid user pointer */
-static bool
-valid_pointer (void *p)
+void *valid_pointer (void *p)
 {
   if (!is_user_vaddr (p) || pagedir_get_page (thread_current ()->pagedir, p) == NULL) {
     exit_with_code (-1);
@@ -74,24 +74,19 @@ valid_pointer (void *p)
   return p; 
 }
 
-static void 
-exit_with_code (int status) {
+static void exit_with_code (int status) {
   thread_current ()->exit_status = status;
   printf ("%s: exit(%d)\n", thread_current ()->name, status);
   thread_exit ();
 }
 
-
 /* Get ith argument */
-void *
-get_argument (struct intr_frame *f, int i) {
+void *get_argument (struct intr_frame *f, int i) {
   return valid_pointer(f->esp + (i + 1) * 4);
 }
 
-
-/* Implement all syscalls needed for Task 2 - User Programs */
 void
-syscall_halt (struct intr_frame *f) {
+syscall_halt (struct intr_frame *f UNUSED) {
   shutdown_power_off();
 }
 
@@ -113,10 +108,10 @@ syscall_exec (struct intr_frame *f) {
 
 void
 syscall_wait (struct intr_frame *f) {
-    f->eax = process_wait (*(tid_t*) get_argument (f, 0));
+  f->eax = process_wait (*(tid_t*) get_argument (f, 0));
 }
 
-struct file * fd_to_file (int fd){
+struct file *fd_to_file (int fd){
   return (struct file *) fd;
 }
 
@@ -175,7 +170,7 @@ syscall_filesize (struct intr_frame *f) {
 void
 syscall_read (struct intr_frame *f) {
   int fd = *(int*) get_argument (f, 0);
-  void *buffer = get_argument (f, 1);
+  void *buffer = *(void**) get_argument (f, 1);
   off_t size = *(off_t*) get_argument (f, 2);
   lock_acquire (&filesys_lock);
   f->eax = (int) file_read (fd_to_file (fd), buffer, size);
@@ -185,11 +180,11 @@ syscall_read (struct intr_frame *f) {
 void
 syscall_write (struct intr_frame *f) {
   int fd = *(int *) get_argument (f, 0);
-  const void *buffer = *(void **) get_argument (f, 1);
+  const void *buffer = *(void**) get_argument (f, 1);
   unsigned length = *(unsigned *) get_argument (f, 2);
 
   // TODO: re implement locking code here
-  /* change to not use magic numbers. */
+  /* change to not use magic. */
   if (fd == 1) {
     putbuf ((char *) buffer, length);
     f->eax = length;
@@ -200,7 +195,7 @@ syscall_write (struct intr_frame *f) {
 
 void
 syscall_seek (struct intr_frame *f) {
-  int fd = *(int*) get_argument (f, 0);
+  int fd = *(struct file**) get_argument (f, 0);
   off_t position = *(off_t*) get_argument (f, 1);
   lock_acquire (&filesys_lock);
   file_seek (fd, position);
