@@ -77,7 +77,7 @@ process_execute (const char *file_name)
     sema_down (&thread_current ()->sema_load);
   }
 
-  return thread_current ()->tid;
+  return tid;
 }
 
 /* A thread function that loads a user process and starts it
@@ -103,7 +103,6 @@ start_process (void *aux)
 
   if (!success) {
     curr->exit_status = -1;
-    curr->tid = TID_ERROR;
     sema_up (&curr->parent->sema_load);
     thread_exit ();
   } else {
