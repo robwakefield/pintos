@@ -70,18 +70,14 @@ process_execute (const char *file_name)
   char *prog_name = args->argv[0]; 
   tid = thread_create (prog_name, PRI_DEFAULT, start_process, args);
 
-  /* should parent process wait until child successfully loaded its executable? 
-    if so -> sema_down parents semaphore to block until child returns*/
   if (tid == TID_ERROR) {
     palloc_free_page (fn_copy); 
   } else {
-    /* Sema down sema_load until load is succesful, parent has to wait until load is successful */
-    
-    // sema_down (&new_t->sema_load);
-    // list_push_back(&thread_current()->child_list, &new_t->child_elem);
+    /* Block parent until load is successful. */
+    sema_down (&thread_current ()->sema_load);
   }
 
-  return tid; /* also return load status? */
+  return tid;
 }
 
 /* A thread function that loads a user process and starts it
@@ -103,16 +99,15 @@ start_process (void *aux)
   /* If load failed, quit. */
   palloc_free_page (args->argv[0]);
 
-  /* If load successful -> parent stops waiting. */
-  // sema_up (&thread_current ()->sema_load);
+  struct thread *curr = thread_current ();
 
-  if (!success) 
+  if (!success) {
+    curr->exit_status = -1;
+    sema_up (&curr->parent->sema_load);
     thread_exit ();
-
-
-  /* Ensure executable of a running process cannot be written to,
-    deny writing to the open files of the running process? */
-  //file_deny_write(thread_current ()->file)
+  } else {
+    sema_up (&curr->parent->sema_load);
+  }
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -161,14 +156,12 @@ process_wait (tid_t child_tid)
     return -1;
   }
 
-  /* Remove child from parent's child_list so it cannot be waited on again. */
-  list_remove (&child->child_elem);
-  /* We can create new sema, to block thread while removing from list ?? 
-  then use sema and can also remove from list later, but have a boolean for child to see
-  if it was waited on before */
-
   /* Block parent thread until child exits. */
   sema_down (&child->sema_wait);
+
+  /* Remove child from parent's child_list so it cannot be waited on again. */
+  list_remove (&child->child_elem);
+  sema_up (&child->sema_load);
 
   return child->exit_status;
 }
@@ -181,6 +174,9 @@ process_exit (void)
   uint32_t *pd;
 
   sema_up (&cur->sema_wait);
+  
+  /* Wait for parent to remove child from its list of child threads. */
+  sema_down (&cur->sema_exit);
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -295,6 +291,7 @@ load (const struct arguments *args, void (**eip) (void), void **esp)
   if (args->argc == 0) {
     return TID_ERROR; // TODO: is this correct behaviour?
   }
+
   char *file_name = args->argv[0]; 
   struct thread *t = thread_current ();
   struct Elf32_Ehdr ehdr;
@@ -311,6 +308,8 @@ load (const struct arguments *args, void (**eip) (void), void **esp)
 
   /* Open executable file. */
   file = filesys_open (file_name);
+  //file_deny_write (file);
+
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", file_name);
@@ -401,6 +400,7 @@ load (const struct arguments *args, void (**eip) (void), void **esp)
  done:
   /* We arrive here whether the load is successful or not. */
   file_close (file);
+  //file_allow_write (file);
   return success;
 }
 

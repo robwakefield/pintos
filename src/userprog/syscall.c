@@ -93,7 +93,8 @@ syscall_halt (struct intr_frame *f) {
 
 void
 syscall_exit (struct intr_frame *f) {
-  int status = *(int*) get_argument (f, 0);
+
+  int status = (f == NULL) ? (-1) : *(int*) get_argument (f, 0);
 
   thread_current ()->exit_status = status;
 
@@ -106,7 +107,7 @@ syscall_exec (struct intr_frame *f) {
   const char *cmd_line = get_argument (f, 0);
 
   if (!valid_pointer (cmd_line)) {
-    syscall_exit(-1);
+    syscall_exit (NULL);
   }
 
   lock_acquire (&filesys_lock);
@@ -136,7 +137,7 @@ syscall_create (struct intr_frame *f) {
   unsigned int initial_size = get_argument (f, 1);
 
   if (file == NULL) {
-    syscall_exit (-1);
+    syscall_exit (NULL);
   }
 
   lock_acquire (&filesys_lock);
@@ -191,7 +192,7 @@ syscall_write (struct intr_frame *f) {
   unsigned length = *(unsigned *) get_argument (f, 2);
 
   // TODO: re implement locking code here
-  /* change to not use magic. */
+  /* change to not use magic numbers. */
   if (fd == 1) {
     putbuf ((char *) buffer, length);
     f->eax = length;

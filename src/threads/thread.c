@@ -260,10 +260,12 @@ thread_create (const char *name, int priority,
   sf->eip = switch_entry;
   sf->ebp = 0;
 
+  intr_set_level (old_level);
+
+  // TODO: move where interrupts disabled ?
+  /* Put new thread into parent's list of children and set child's parent. */
   list_push_back (&thread_current()->child_list, &t->child_elem);
   t->parent = thread_current ();
-
-  intr_set_level (old_level);
 
   /* Add to run queue. */
   thread_unblock (t);
@@ -785,8 +787,11 @@ init_thread (struct thread *t, const char *name, int priority)
 #ifdef USERPROG
   /* Initialize the list of children */
   list_init(&t->child_list);
-  /* Initialize the alive semaphore */
+
+  /* Initialize the thread's semaphores */
   sema_init(&t->sema_wait, 0);
+  sema_init (&t->sema_load, 0);
+  sema_init (&t->sema_exit, 0);
   
   t->exit_status = -1;
 #endif
