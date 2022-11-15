@@ -7,6 +7,7 @@
 #include "userprog/pagedir.h"
 #include "userprog/process.h"
 #include "devices/shutdown.h"
+#include "devices/input.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
 #include "threads/palloc.h"
@@ -193,10 +194,17 @@ syscall_read (struct intr_frame *f) {
   unsigned size = *(unsigned*) get_argument (f, 2);
   /* Ensure the entirety of buffer is valid */
   valid_pointer (buffer + size);
-  
-  lock_acquire (&filesys_lock);
-  f->eax = file_read (fd_to_file (fd), buffer, size);
-  lock_release (&filesys_lock);
+  // TODO: remove magic numbers
+  if (fd == 0) {
+    *(char*) buffer = input_getc();
+    f->eax = 1;
+  } else if (fd == 1) {
+    f->eax = -1;
+  } else {
+    lock_acquire (&filesys_lock);
+    f->eax = file_read (fd_to_file (fd), buffer, size);
+    lock_release (&filesys_lock);
+  }
 }
 
 void
