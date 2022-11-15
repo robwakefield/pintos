@@ -9,6 +9,7 @@
 #include "devices/shutdown.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
+#include "threads/palloc.h"
 
 static void syscall_handler (struct intr_frame *);
 static void (*syscall_handlers[20]) (struct intr_frame *);     /* Array of function pointers so syscall handlers. */
@@ -109,13 +110,29 @@ syscall_wait (struct intr_frame *f) {
   f->eax = process_wait (*(tid_t*) get_argument (f, 0));
 }
 
+struct file * table[32] = {0};
+
 struct file *fd_to_file (int fd){
-  return (struct file *) fd;
+  if (table[fd - 2] == NULL){
+    return NULL;
+  }else{
+    return table[fd - 2];
+  }
 }
 
 int file_to_fd (struct file *file){
-  return (int) file;
+  for(int i = 0;i<32;i++){
+    if(table[i] == 0){
+      table[i] = file;
+      return i + 2;
+    }
+  }
+  return -1;
 }
+
+
+
+
 
 void
 syscall_create (struct intr_frame *f) {
@@ -164,10 +181,15 @@ syscall_open (struct intr_frame *f) {
 void
 syscall_filesize (struct intr_frame *f) {
   int fd = *(int*) get_argument (f, 0);
-  struct file *file = fd_to_file (fd);
-  lock_acquire (&filesys_lock);
-  f->eax = (int) file_length (file);
-  lock_release (&filesys_lock);
+  if(fd < 2){
+    f->eax = 0;
+  }else{
+    struct file *file = fd_to_file (fd);
+    
+    lock_acquire (&filesys_lock);
+    f->eax = (int) file_length (file);
+    lock_release (&filesys_lock);
+  }
 }
 
 void
@@ -202,26 +224,37 @@ syscall_write (struct intr_frame *f) {
 
 void
 syscall_seek (struct intr_frame *f) {
-  int fd = *(struct file**) get_argument (f, 0);
+  int fd = *(int*) get_argument (f, 0);
   off_t position = *(off_t*) get_argument (f, 1);
-  lock_acquire (&filesys_lock);
-  file_seek (fd, position);
-  lock_release (&filesys_lock);
+  if(fd > 2){
+    
+    lock_acquire (&filesys_lock);
+    file_seek (fd_to_file(fd), position);
+    lock_release (&filesys_lock);
+  }
 }
 
 void
 syscall_tell (struct intr_frame *f) {
   int fd = *(int*) get_argument (f, 0);
-  lock_acquire (&filesys_lock);
-  unsigned position = (unsigned) file_tell (fd_to_file (fd));
-  lock_release (&filesys_lock);
-  f->eax = position;
+  if(fd < 2){
+    f->eax = 0;
+  }else{
+    
+    lock_acquire (&filesys_lock);
+    unsigned position = (unsigned) file_tell (fd_to_file (fd));
+    lock_release (&filesys_lock);
+    f->eax = position;
+  }
 }
 
 void
 syscall_close (struct intr_frame *f) {
   int fd = *(int*) get_argument (f, 0);
-  lock_acquire (&filesys_lock);
-  file_close (fd_to_file (fd));
-  lock_release (&filesys_lock);
+  if(fd > 2){
+    
+    lock_acquire (&filesys_lock);
+    file_close (fd_to_file (fd));
+    lock_release (&filesys_lock);
+  }
 }
