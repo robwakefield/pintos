@@ -112,8 +112,8 @@ syscall_wait (struct intr_frame *f) {
 
 struct file *table[32] = {0};
 
-struct file *fd_to_file (int fd){
-  if (fd < 0 || fd >= 32 || table[fd - 2] == NULL) {
+struct file *fd_to_file (int fd) {
+  if (fd < 2 || fd >= 32 || table[fd - 2] == NULL) {
     return NULL;
   } else {
     return table[fd - 2];
@@ -132,7 +132,7 @@ int file_to_fd (struct file *file){
 
 void
 syscall_create (struct intr_frame *f) {
-  const char *file = *(char**) get_argument (f, 0);
+  const char *file = (const char*) valid_pointer (*(void**) get_argument (f, 0));
   unsigned int initial_size = *(unsigned int*) get_argument (f, 1);
 
   if (file == NULL) {
@@ -189,30 +189,34 @@ syscall_filesize (struct intr_frame *f) {
 void
 syscall_read (struct intr_frame *f) {
   int fd = *(int*) get_argument (f, 0);
-  void *buffer = *(void**) get_argument (f, 1);
-  off_t size = *(off_t*) get_argument (f, 2);
+  void *buffer = valid_pointer (*(void**) get_argument (f, 1));
+  unsigned size = *(unsigned*) get_argument (f, 2);
+  /* Ensure the entirety of buffer is valid */
+  valid_pointer (buffer + size);
+  
   lock_acquire (&filesys_lock);
-  f->eax = (int) file_read (fd_to_file (fd), buffer, size);
+  f->eax = file_read (fd_to_file (fd), buffer, size);
   lock_release (&filesys_lock);
 }
 
 void
 syscall_write (struct intr_frame *f) {
   int fd = *(int *) get_argument (f, 0);
-  const void *buffer = *(void**) get_argument (f, 1);
-  unsigned length = *(unsigned *) get_argument (f, 2);
+  const void *buffer = valid_pointer (*(void**) get_argument (f, 1));
+  unsigned size = *(unsigned *) get_argument (f, 2);
+  /* Ensure the entirety of buffer is valid */
+  valid_pointer (buffer + size);
 
-  // TODO: re implement locking code here
-  /* change to not use magic. */
+  /* TODO: change to not use magic. */
   if (fd == 1) {
-    putbuf ((char *) buffer, length);
-    f->eax = length;
+    putbuf ((char *) buffer, size);
+    f->eax = size;
   } else if (fd == 0) {
     f->eax = 0;
   } else {
-    lock_acquire(&filesys_lock);
-    f->eax = file_write(fd_to_file(fd),buffer,length);
-    lock_release(&filesys_lock);
+    lock_acquire (&filesys_lock);
+    f->eax = file_write(fd_to_file (fd), buffer, size);
+    lock_release (&filesys_lock);
   }
 }
 
