@@ -98,7 +98,8 @@ syscall_exit (struct intr_frame *f) {
 
 void
 syscall_exec (struct intr_frame *f) {
-  const char *cmd_line = *(char**) get_argument (f, 0);
+  // TODO: inefficient casting
+  const char *cmd_line = (char*) valid_pointer (*(void**) get_argument (f, 0));
   tid_t child_tid = process_execute (cmd_line);
   f->eax = child_tid;
 }

@@ -77,7 +77,7 @@ process_execute (const char *file_name)
     sema_down (&thread_current ()->sema_load);
   }
 
-  return tid;
+  return thread_current ()->tid;
 }
 
 /* A thread function that loads a user process and starts it
@@ -103,6 +103,7 @@ start_process (void *aux)
 
   if (!success) {
     curr->exit_status = -1;
+    curr->tid = TID_ERROR;
     sema_up (&curr->parent->sema_load);
     thread_exit ();
   } else {
@@ -288,17 +289,17 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
 bool
 load (const struct arguments *args, void (**eip) (void), void **esp) 
 {
-  if (args->argc == 0) {
-    return TID_ERROR; // TODO: is this correct behaviour?
-  }
-
-  char *file_name = args->argv[0]; 
   struct thread *t = thread_current ();
   struct Elf32_Ehdr ehdr;
   struct file *file = NULL;
   off_t file_ofs;
   bool success = false;
   int i;
+  
+  if (args->argc == 0) {
+    goto done;
+  }
+  char *file_name = args->argv[0]; 
 
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
