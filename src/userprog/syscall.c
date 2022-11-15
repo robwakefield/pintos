@@ -161,21 +161,19 @@ syscall_remove (struct intr_frame *f) {
 
 void
 syscall_open (struct intr_frame *f) {
-  const char *name = *(const char**) get_argument (f, 0);
+  const char *name = (const char*) valid_pointer (*(void**) get_argument (f, 0));
   if (name == NULL) {
     f->eax = -1;
-  }else{
-    lock_acquire (&filesys_lock);
-    struct file *file = filesys_open (name);
-    lock_release (&filesys_lock);
-    if (file == NULL) {
-      f->eax = -1;
-    } else {
-      
-      f->eax = file_to_fd(file);
-    }
+    return;
   }
-  // TODO: change hard coded value
+  lock_acquire (&filesys_lock);
+  struct file *file = filesys_open (name);
+  lock_release (&filesys_lock);
+  if (file == NULL) {
+    f->eax = -1;
+  } else {
+    f->eax = file_to_fd(file);
+  }
 }
 
 void
