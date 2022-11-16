@@ -113,7 +113,9 @@ syscall_wait (struct intr_frame *f) {
 struct file * table[32] = {0};
 
 struct file *fd_to_file (int fd){
-  if (table[fd - 2] == NULL){
+  if(fd>=32 || table[fd - 2] == NULL){
+    lock_release(&filesys_lock);
+    exit_with_code (-1);
     return NULL;
   }else{
     return table[fd - 2];
@@ -122,7 +124,7 @@ struct file *fd_to_file (int fd){
 
 int file_to_fd (struct file *file){
   for(int i = 0;i<32;i++){
-    if(table[i] == 0){
+    if(table[i] == NULL){
       table[i] = file;
       return i + 2;
     }
@@ -130,6 +132,9 @@ int file_to_fd (struct file *file){
   return -1;
 }
 
+void remove_fd(int fd){
+  table[fd - 2] = NULL;
+}
 
 
 
@@ -255,6 +260,7 @@ syscall_close (struct intr_frame *f) {
     
     lock_acquire (&filesys_lock);
     file_close (fd_to_file (fd));
+    remove_fd(fd);
     lock_release (&filesys_lock);
   }
 }
