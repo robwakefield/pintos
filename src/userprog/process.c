@@ -77,6 +77,10 @@ process_execute (const char *file_name)
     sema_down (&thread_current ()->sema_load);
   }
 
+  if (!thread_current ()->loaded) {
+    return -1;
+  } 
+  
   return tid;
 }
 
@@ -100,6 +104,8 @@ start_process (void *aux)
   palloc_free_page (args->argv[0]);
 
   struct thread *curr = thread_current ();
+
+  curr->parent->loaded = success;
 
   if (!success) {
     curr->exit_status = -1;
@@ -152,16 +158,18 @@ process_wait (tid_t child_tid)
       }
   }
 
-  if (child == NULL || child->parent != curr) {
+  if (child == NULL || child->parent != curr || child->waited) {
     return -1;
   }
+
+  child->waited = true;
 
   /* Block parent thread until child exits. */
   sema_down (&child->sema_wait);
 
   /* Remove child from parent's child_list so it cannot be waited on again. */
   list_remove (&child->child_elem);
-  sema_up (&child->sema_load);
+  sema_up (&child->sema_exit);
 
   return child->exit_status;
 }
