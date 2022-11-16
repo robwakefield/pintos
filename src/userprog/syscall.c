@@ -14,7 +14,7 @@
 
 static void syscall_handler (struct intr_frame *);
 static void (*syscall_handlers[20]) (struct intr_frame *);     /* Array of function pointers so syscall handlers. */
-static void exit_with_code (int);
+void exit_with_code (int);
 static void *valid_pointer (void *);
 
 void *get_argument (struct intr_frame *f, int i);
@@ -76,7 +76,7 @@ void *valid_pointer (void *p)
   return p; 
 }
 
-static void exit_with_code (int status) {
+void exit_with_code (int status) {
   thread_current ()->exit_status = status;
   printf ("%s: exit(%d)\n", thread_current ()->name, status);
   thread_exit ();
