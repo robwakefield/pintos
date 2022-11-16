@@ -7,6 +7,7 @@
 #include "userprog/pagedir.h"
 #include "userprog/process.h"
 #include "devices/shutdown.h"
+#include "devices/input.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
 #include "threads/palloc.h"
@@ -113,24 +114,29 @@ syscall_wait (struct intr_frame *f) {
 struct file * table[32] = {0};
 
 struct file *fd_to_file (int fd){
-  if(fd>=32 || table[fd - 2] == NULL){
+  if(fd < 2 || fd>=34 || table[fd - 2] == NULL){
     lock_release(&filesys_lock);
     exit_with_code (-1);
+
+
     return NULL;
-  }else{
+  } else {
     return table[fd - 2];
   }
 }
 
-int file_to_fd (struct file *file){
-  for(int i = 0;i<32;i++){
-    if(table[i] == NULL){
+
+int file_to_fd (struct file *file) {
+  for (int i = 0; i < 32; i++) {
+    if (table[i] == NULL) {
+
       table[i] = file;
       return i + 2;
     }
   }
   return -1;
 }
+
 
 void remove_fd(int fd){
   table[fd - 2] = NULL;
@@ -139,9 +145,10 @@ void remove_fd(int fd){
 
 
 
+
 void
 syscall_create (struct intr_frame *f) {
-  const char *file = *(char**) get_argument (f, 0);
+  const char *file = (const char*) valid_pointer (*(void**) get_argument (f, 0));
   unsigned int initial_size = *(unsigned int*) get_argument (f, 1);
 
   if (file == NULL) {
@@ -166,21 +173,19 @@ syscall_remove (struct intr_frame *f) {
 
 void
 syscall_open (struct intr_frame *f) {
-  const char *name = *(const char**) get_argument (f, 0);
+  const char *name = (const char*) valid_pointer (*(void**) get_argument (f, 0));
   if (name == NULL) {
     f->eax = -1;
-  }else{
-    lock_acquire (&filesys_lock);
-    struct file *file = filesys_open (name);
-    lock_release (&filesys_lock);
-    if (file == NULL) {
-      f->eax = -1;
-    } else {
-      
-      f->eax = file_to_fd(file);
-    }
+    return;
   }
-  // TODO: change hard coded value
+  lock_acquire (&filesys_lock);
+  struct file *file = filesys_open (name);
+  lock_release (&filesys_lock);
+  if (file == NULL) {
+    f->eax = -1;
+  } else {
+    f->eax = file_to_fd (file);
+  }
 }
 
 void
@@ -200,30 +205,47 @@ syscall_filesize (struct intr_frame *f) {
 void
 syscall_read (struct intr_frame *f) {
   int fd = *(int*) get_argument (f, 0);
-  void *buffer = *(void**) get_argument (f, 1);
-  off_t size = *(off_t*) get_argument (f, 2);
-  lock_acquire (&filesys_lock);
-  f->eax = (int) file_read (fd_to_file (fd), buffer, size);
-  lock_release (&filesys_lock);
+  void *buffer = valid_pointer (*(void**) get_argument (f, 1));
+  unsigned size = *(unsigned*) get_argument (f, 2);
+  /* Ensure the entirety of buffer is valid */
+  valid_pointer (buffer + size);
+  // TODO: remove magic numbers
+  if (fd == 0) {
+    *(char*) buffer = input_getc();
+    f->eax = 1;
+  } else if (fd == 1) {
+    f->eax = -1;
+  } else {
+    lock_acquire (&filesys_lock);
+    struct file* file = fd_to_file (fd);
+    if (file != NULL) {  
+      f->eax = file_read (file, buffer, size);
+    }
+    lock_release (&filesys_lock);
+  }
 }
 
 void
 syscall_write (struct intr_frame *f) {
   int fd = *(int *) get_argument (f, 0);
-  const void *buffer = *(void**) get_argument (f, 1);
-  unsigned length = *(unsigned *) get_argument (f, 2);
+  const void *buffer = valid_pointer (*(void**) get_argument (f, 1));
+  unsigned size = *(unsigned *) get_argument (f, 2);
+  /* Ensure the entirety of buffer is valid */
+  valid_pointer (buffer + size);
 
-  // TODO: re implement locking code here
-  /* change to not use magic. */
+  /* TODO: change to not use magic. */
   if (fd == 1) {
-    putbuf ((char *) buffer, length);
-    f->eax = length;
+    putbuf ((char *) buffer, size);
+    f->eax = size;
   } else if (fd == 0) {
     f->eax = 0;
   } else {
-    lock_acquire(&filesys_lock);
-    f->eax = file_write(fd_to_file(fd),buffer,length);
-    lock_release(&filesys_lock);
+    lock_acquire (&filesys_lock);
+    struct file *file = fd_to_file (fd);
+    if (file != NULL) {
+      f->eax = file_write (file, buffer, size);
+    }
+    lock_release (&filesys_lock);
   }
 }
 
@@ -231,10 +253,12 @@ void
 syscall_seek (struct intr_frame *f) {
   int fd = *(int*) get_argument (f, 0);
   off_t position = *(off_t*) get_argument (f, 1);
-  if(fd > 2){
-    
+  if (fd > 2) {
     lock_acquire (&filesys_lock);
-    file_seek (fd_to_file(fd), position);
+    struct file *file = fd_to_file (fd);
+    if (file != NULL) {
+      file_seek (file, position);
+    }
     lock_release (&filesys_lock);
   }
 }
@@ -242,14 +266,15 @@ syscall_seek (struct intr_frame *f) {
 void
 syscall_tell (struct intr_frame *f) {
   int fd = *(int*) get_argument (f, 0);
-  if(fd < 2){
+  if (fd < 2) {
     f->eax = 0;
-  }else{
-    
+  } else {
     lock_acquire (&filesys_lock);
-    unsigned position = (unsigned) file_tell (fd_to_file (fd));
+    struct file *file = fd_to_file (fd);
+    if (file != NULL) {
+      f->eax = (unsigned) file_tell (file);
+    }
     lock_release (&filesys_lock);
-    f->eax = position;
   }
 }
 
@@ -257,10 +282,17 @@ void
 syscall_close (struct intr_frame *f) {
   int fd = *(int*) get_argument (f, 0);
   if(fd > 2){
-    
     lock_acquire (&filesys_lock);
+
     file_close (fd_to_file (fd));
-    remove_fd(fd);
+    
+
+    struct file *file = fd_to_file (fd);
+    if (file != NULL) {
+      file_close (file);
+      remove_fd(fd);
+    }
+
     lock_release (&filesys_lock);
   }
 }
