@@ -114,7 +114,7 @@ syscall_wait (struct intr_frame *f) {
 struct file *table[32] = {0};
 
 struct file *fd_to_file (int fd) {
-  if (fd < 2 || fd >= 32 || table[fd - 2] == NULL) {
+  if (fd < 2 || fd >= 34 || table[fd - 2] == NULL) {
     return NULL;
   } else {
     return table[fd - 2];
@@ -202,7 +202,10 @@ syscall_read (struct intr_frame *f) {
     f->eax = -1;
   } else {
     lock_acquire (&filesys_lock);
-    f->eax = file_read (fd_to_file (fd), buffer, size);
+    struct file* file = fd_to_file (fd);
+    if (file != NULL) {  
+      f->eax = file_read (file, buffer, size);
+    }
     lock_release (&filesys_lock);
   }
 }
@@ -223,7 +226,10 @@ syscall_write (struct intr_frame *f) {
     f->eax = 0;
   } else {
     lock_acquire (&filesys_lock);
-    f->eax = file_write(fd_to_file (fd), buffer, size);
+    struct file *file = fd_to_file (fd);
+    if (file != NULL) {
+      f->eax = file_write (file, buffer, size);
+    }
     lock_release (&filesys_lock);
   }
 }
@@ -232,10 +238,12 @@ void
 syscall_seek (struct intr_frame *f) {
   int fd = *(int*) get_argument (f, 0);
   off_t position = *(off_t*) get_argument (f, 1);
-  if(fd > 2){
-    
+  if (fd > 2) {
     lock_acquire (&filesys_lock);
-    file_seek (fd_to_file(fd), position);
+    struct file *file = fd_to_file (fd);
+    if (file != NULL) {
+      file_seek (file, position);
+    }
     lock_release (&filesys_lock);
   }
 }
@@ -243,14 +251,15 @@ syscall_seek (struct intr_frame *f) {
 void
 syscall_tell (struct intr_frame *f) {
   int fd = *(int*) get_argument (f, 0);
-  if(fd < 2){
+  if (fd < 2) {
     f->eax = 0;
-  }else{
-    
+  } else {
     lock_acquire (&filesys_lock);
-    unsigned position = (unsigned) file_tell (fd_to_file (fd));
+    struct file *file = fd_to_file (fd);
+    if (file != null) {
+      f->eax = (unsigned) file_tell (file);
+    }
     lock_release (&filesys_lock);
-    f->eax = position;
   }
 }
 
@@ -259,7 +268,10 @@ syscall_close (struct intr_frame *f) {
   int fd = *(int*) get_argument (f, 0);
   if(fd > 2){
     lock_acquire (&filesys_lock);
-    file_close (fd_to_file (fd));
+    struct file *file = fd_to_file (fd);
+    if (file != NULL) {
+      file_close (file);
+    }
     lock_release (&filesys_lock);
   }
 }
