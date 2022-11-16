@@ -121,7 +121,7 @@ struct file *fd_to_file (int fd) {
   }
 }
 
-int file_to_fd (struct file *file){
+int file_to_fd (struct file *file) {
   for (int i = 0; i < 32; i++) {
     if (table[i] == 0) {
       table[i] = file;
@@ -169,7 +169,7 @@ syscall_open (struct intr_frame *f) {
   if (file == NULL) {
     f->eax = -1;
   } else {
-    f->eax = file_to_fd(file);
+    f->eax = file_to_fd (file);
   }
 }
 
@@ -256,7 +256,7 @@ syscall_tell (struct intr_frame *f) {
   } else {
     lock_acquire (&filesys_lock);
     struct file *file = fd_to_file (fd);
-    if (file != null) {
+    if (file != NULL) {
       f->eax = (unsigned) file_tell (file);
     }
     lock_release (&filesys_lock);
