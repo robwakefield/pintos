@@ -79,7 +79,7 @@ void *valid_pointer (void *p)
 void exit_with_code (int status) {
   thread_current ()->exit_status = status;
   printf ("%s: exit(%d)\n", thread_current ()->name, status);
-  thread_exit ();
+  thread_exit();
 }
 
 /* Get ith argument */
@@ -115,10 +115,6 @@ struct file * table[32] = {0};
 
 struct file *fd_to_file (int fd){
   if(fd < 2 || fd>=34 || table[fd - 2] == NULL){
-    lock_release(&filesys_lock);
-    exit_with_code (-1);
-
-
     return NULL;
   } else {
     return table[fd - 2];
@@ -195,10 +191,11 @@ syscall_filesize (struct intr_frame *f) {
     f->eax = 0;
   }else{
     struct file *file = fd_to_file (fd);
-    
-    lock_acquire (&filesys_lock);
-    f->eax = (int) file_length (file);
-    lock_release (&filesys_lock);
+    if (file != NULL) {
+      lock_acquire (&filesys_lock);
+      f->eax = (int) file_length (file);
+      lock_release (&filesys_lock);
+    }
   }
 }
 
@@ -283,10 +280,7 @@ syscall_close (struct intr_frame *f) {
   int fd = *(int*) get_argument (f, 0);
   if(fd > 2){
     lock_acquire (&filesys_lock);
-
-    file_close (fd_to_file (fd));
     
-
     struct file *file = fd_to_file (fd);
     if (file != NULL) {
       file_close (file);

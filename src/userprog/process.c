@@ -8,6 +8,7 @@
 #include "userprog/gdt.h"
 #include "userprog/pagedir.h"
 #include "userprog/tss.h"
+#include "userprog/syscall.h"
 #include "filesys/directory.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
@@ -52,7 +53,7 @@ process_execute (const char *file_name)
     return TID_ERROR;
 
   char *arg_val, *s_ptr;
-  int args_size; /* Ensure arguments are not too large to be placed on the stack */
+  int args_size = 0; /* Ensure arguments are not too large to be placed on the stack */
   for (arg_val = strtok_r (fn_copy, " ", &s_ptr); arg_val != NULL; arg_val = strtok_r (NULL, " ", &s_ptr)) {
     args->argv[args->argc] = arg_val;
     args->argc++;
@@ -180,6 +181,15 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
+
+  struct list *list = &thread_current ()->open_file_list;
+  while (!list_empty (list)) {
+    struct list_elem *e = list_pop_front (list);
+    struct fd_list_item *fd_item = list_entry (e, struct fd_list_item, elem);
+    int fd = fd_item->fd;
+    struct file *file = fd_to_file (fd);
+    file_close (file);
+  }
 
   sema_up (&cur->sema_wait);
   
@@ -325,13 +335,16 @@ load (const struct arguments *args, void (**eip) (void), void **esp)
 
   /* Open executable file. */
   file = filesys_open (file_name);
-  //file_deny_write (file);
 
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", file_name);
       goto done; 
     }
+
+  /* Deny writes to open file */
+  file_deny_write (file);
+  thread_add_fd (file_to_fd (file));
 
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -417,8 +430,9 @@ load (const struct arguments *args, void (**eip) (void), void **esp)
  done:
   /* We arrive here whether the load is successful or not. */
   // palloc_free_page (args);
-  file_close (file);
-  //file_allow_write (file);
+  if (!success) {
+    file_close (file);
+  }
   return success;
 }
 
