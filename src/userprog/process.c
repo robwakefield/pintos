@@ -139,18 +139,18 @@ process_wait (tid_t child_tid)
 {
   struct thread *curr = thread_current ();
   struct thread *child = NULL;
-  struct list_elem *temp_elem;
+  struct list_elem *elem;
 
   if(list_empty(&curr->child_list)) {
     return -1;
   }
   
   /* Find child thread in the child list of the parent thread. */
-  for (temp_elem = list_begin (&curr->child_list); 
-       temp_elem != list_end (&curr->child_list); 
-       temp_elem = list_next (temp_elem))
+  for (elem = list_begin (&curr->child_list); 
+       elem != list_end (&curr->child_list); 
+       elem = list_next (elem))
   {
-      struct thread *temp = list_entry (temp_elem, struct thread, child_elem);
+      struct thread *temp = list_entry (elem, struct thread, child_elem);
       
       if (temp->tid == child_tid) {
         child = temp;
@@ -183,8 +183,17 @@ process_exit (void)
 
   sema_up (&cur->sema_wait);
   
-  /* Wait for parent to remove child from its list of child threads. */
+  /* Wait for parent to remove child from its list of child threads before terminating. */
   sema_down (&cur->sema_exit);
+
+  /* Once process exits, stop all children threads waiting blocked on sema_exit. */
+  struct list_elem *elem;
+  for (elem = list_begin (&cur->child_list); elem != list_end (&cur->child_list);
+     elem = list_next (elem))
+  {
+    struct thread *temp = list_entry (elem, struct thread, child_elem);
+    sema_up(&temp->sema_exit);
+  }
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
