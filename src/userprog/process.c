@@ -77,7 +77,7 @@ process_execute (const char *file_name)
     sema_down (&thread_current ()->sema_load);
   }
 
-  if (!thread_current ()->loaded) {
+  if (!thread_current ()->load_status) {
     return -1;
   } 
   
@@ -105,7 +105,7 @@ start_process (void *aux)
 
   struct thread *curr = thread_current ();
 
-  curr->parent->loaded = success;
+  curr->parent->load_status = success;
 
   if (!success) {
     curr->exit_status = -1;

@@ -111,7 +111,7 @@ struct thread
     struct list_elem child_elem;       /* For storing child thread in the parent's list of children. */
 
     int exit_status;
-    bool loaded;
+    bool load_status;
     bool waited;
 
     struct list open_fds;              /* List of open file descriptors of the process. */
