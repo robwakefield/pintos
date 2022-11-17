@@ -114,7 +114,6 @@ struct thread
     bool load_status;
     bool waited;
 
-    struct list open_fds;              /* List of open file descriptors of the process. */
     struct list open_file_list;        /* List of files which the current process has open */
 
     struct semaphore sema_wait;        /* Semaphore to be used when process is waiting. */
