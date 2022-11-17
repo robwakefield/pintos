@@ -31,6 +31,16 @@ FirstName LastName <email@domain.example>
 >> global or static variable, `typedef', or enumeration. 
 >> Identify the purpose of each in roughly 25 words.
 
+/* List element wrapper for fd */
+struct fd_list_item {
+  int fd;
+  struct list_elem elem;
+};
+
+In struct thread:
+  struct list open_fds;              /* List of open file descriptors of the process. */
+  struct list open_file_list;        /* List of files which the current process has open */
+
 ---- ALGORITHMS ----
 
 >> A2: (2 marks)
