@@ -100,7 +100,6 @@ syscall_exit (struct intr_frame *f) {
 
 void
 syscall_exec (struct intr_frame *f) {
-  // TODO: inefficient casting
   const char *cmd_line = (char*) valid_pointer (*(void**) get_argument (f, 0));
   tid_t child_tid = process_execute (cmd_line);
   f->eax = child_tid;
@@ -317,7 +316,6 @@ syscall_read (struct intr_frame *f) {
   unsigned size = *(unsigned*) get_argument (f, 2);
   /* Ensure the entirety of buffer is valid */
   valid_pointer (buffer + size);
-  // TODO: remove magic numbers
   if (fd == 0) {
     *(char*) buffer = input_getc();
     f->eax = 1;
@@ -341,7 +339,6 @@ syscall_write (struct intr_frame *f) {
   /* Ensure the entirety of buffer is valid */
   valid_pointer (buffer + size);
 
-  /* TODO: change to not use magic. */
   if (fd == 1) {
     putbuf ((char *) buffer, size);
     f->eax = size;

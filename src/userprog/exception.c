@@ -88,7 +88,6 @@ kill (struct intr_frame *f)
               thread_name (), f->vec_no, intr_name (f->vec_no));
       intr_dump_frame (f);
       exit_with_code (-1);
-      //thread_exit (); 
       
 
     case SEL_KCSEG:

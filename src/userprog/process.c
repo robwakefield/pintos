@@ -21,7 +21,7 @@
 /* Passed argument struct */
 struct arguments {
   int argc;
-  char *argv[PGSIZE / 2]; // TODO: Choose correct limit length
+  char *argv[PGSIZE / 2];
 };
 
 static thread_func start_process NO_RETURN;
@@ -47,7 +47,7 @@ process_execute (const char *file_name)
 
   /* Parse command line input into program name and arguments. */
   struct arguments *args;
-  args = palloc_get_page (PAL_USER); // TODO: free this somewhere
+  args = palloc_get_page (PAL_USER);
   if (args == NULL)
     return TID_ERROR;
 
@@ -325,7 +325,6 @@ load (const struct arguments *args, void (**eip) (void), void **esp)
 
   /* Open executable file. */
   file = filesys_open (file_name);
-  //file_deny_write (file);
 
   if (file == NULL) 
     {
@@ -416,9 +415,7 @@ load (const struct arguments *args, void (**eip) (void), void **esp)
 
  done:
   /* We arrive here whether the load is successful or not. */
-  // palloc_free_page (args);
   file_close (file);
-  //file_allow_write (file);
   return success;
 }
 
@@ -558,9 +555,6 @@ setup_stack (const struct arguments *args, void **esp)
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success) {
         *esp = push_args_on_stack (args);
-        // TODO: debugging code
-        //printf ("Set up stack:\n");
-        //hex_dump (PHYS_BASE - 64, kpage + PGSIZE - 64, 64, true);
       } else {
         palloc_free_page (kpage);
       }
