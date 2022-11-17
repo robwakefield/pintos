@@ -113,6 +113,113 @@ syscall_wait (struct intr_frame *f) {
 
 struct file * table[32] = {0};
 
+static struct list file_list;
+static struct list file_page_list;
+
+void file_init(){
+  list_init(&file_list);
+  list_init(&file_page_list);
+}
+
+struct fdTable{
+  int tid;
+  int tabNum;
+  struct list_elem elem;
+  struct fdTable *nextTable;
+  int free;
+  struct file * table[32];
+};
+
+struct fdPage{
+  struct list_elem elem;
+  int free;
+  struct fdTable tables[6];
+};
+
+static struct fdPage * newFilePage(){
+  struct fdPage *page = palloc_get_page(PAL_ZERO);
+  list_push_back(&file_page_list,&page->elem);
+  page->free = 63;
+  return page;
+}
+
+static struct fdTable* newFileTable(int tid){
+  struct list_elem *e;
+  for (e = list_begin (&file_page_list); e != list_end (&file_page_list); e = list_next (e)){
+    struct fdPage *page = list_entry(e,struct fdTable, elem);
+    if(page->free > 0){
+      for(int i = 0; i<6;i++){
+        if ((1<<i)&page->free == 1){
+          struct fdTable *table = &(page->tables[i]);
+          table->tid = tid;
+          table->nextTable = NULL;
+          table->free = 6;
+          table->elem.prev == NULL;
+          table->elem.next == NULL;
+          memset(&(table->table),0,sizeof(table->table));
+          page->free -= 1<<i;
+          return &table;
+        }
+      }
+    }
+  }
+  struct fdPage *page = newFilePage();
+  struct fdTable *table = &(page->tables[0]);
+  table->tid = tid;
+  table->nextTable = NULL;
+  table->free = 6;
+  table->elem.prev == NULL;
+  table->elem.next == NULL;
+  memset(&(table->table),0,sizeof(table->table));
+  page->free -= 1;
+  return table;
+}
+
+static struct fdTable* tidFileTable(int tid){
+  struct list_elem *e;
+  for (e = list_begin (&file_list); e != list_end (&file_list); e = list_next (e)){
+    struct fdTable *table = list_entry(e,struct fdTable, elem);
+    if(table->tid == tid){
+      return table;
+    }
+  }
+  struct fdTable *table = newFileTable(tid);
+  table->tabNum = 0;
+
+
+  list_push_back(&file_list,&(table->elem));
+  return &table;
+}
+
+static struct fdTable* extendFDTable(struct fdTable* table){
+  ASSERT(table->nextTable == NULL);
+  struct fdTable *newTable = newFileTable(table->tid);
+  table->nextTable = newTable;
+  return newTable;
+}
+
+static int assign_fd(struct file *file){
+  int fd = 2;
+  for(struct fdTable *table = tidFileTable(thread_current());(table != NULL);table = table->nextTable){
+    if(table->free > 0){
+      for (int i = 0; i < 32; i++) {
+        if (table->table[i] == NULL) {
+
+          table->table[i] = file;
+          return fd + i;
+        }
+      }
+    }
+    fd += 32;
+  }
+  struct fdTable *tableT = extendFDTable(table);
+  tableT->table[0] == file;
+  return fd;
+
+}
+
+
+
 struct file *fd_to_file (int fd){
   if(fd < 2 || fd>=34 || table[fd - 2] == NULL){
     lock_release(&filesys_lock);
@@ -127,6 +234,7 @@ struct file *fd_to_file (int fd){
 
 
 int file_to_fd (struct file *file) {
+  assign_fd(file);
   for (int i = 0; i < 32; i++) {
     if (table[i] == NULL) {
 

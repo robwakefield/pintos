@@ -13,6 +13,7 @@
 #include "devices/serial.h"
 #include "devices/shutdown.h"
 #include "devices/timer.h"
+#include "userprog/syscall.h"
 #include "devices/vga.h"
 #include "devices/rtc.h"
 #include "threads/interrupt.h"
@@ -87,6 +88,7 @@ main (void)
 
   /* Initialize ourselves as a thread so we can use locks,
      then enable console locking. */
+  file_init();
   thread_init ();
   console_init ();  
 
@@ -108,6 +110,7 @@ main (void)
   /* Initialize interrupt handlers. */
   intr_init ();
   timer_init ();
+
   kbd_init ();
   input_init ();
 #ifdef USERPROG
