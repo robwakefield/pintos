@@ -47,7 +47,7 @@ process_execute (const char *file_name)
 
   /* Parse command line input into program name and arguments. */
   struct arguments *args;
-  args = palloc_get_page (0); // TODO: free this somewhere
+  args = palloc_get_page (PAL_USER); // TODO: free this somewhere
   if (args == NULL)
     return TID_ERROR;
 
@@ -78,7 +78,7 @@ process_execute (const char *file_name)
   }
 
   if (!thread_current ()->load_status) {
-    return -1;
+    return TID_ERROR;
   } 
   
   return tid;
@@ -416,6 +416,7 @@ load (const struct arguments *args, void (**eip) (void), void **esp)
 
  done:
   /* We arrive here whether the load is successful or not. */
+  // palloc_free_page (args);
   file_close (file);
   //file_allow_write (file);
   return success;
