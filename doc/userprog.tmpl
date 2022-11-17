@@ -8,9 +8,9 @@
 
 >> Fill in the names and email addresses of your group members.
 
-FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
+Rob Wakefield <rgw20@ic.ac.uk>
+Nada Struharova <email@domain.example>
+Harrison Barker <email@domain.example>
 
 ---- PRELIMINARIES ----
 
@@ -36,6 +36,12 @@ FirstName LastName <email@domain.example>
 >> A2: (2 marks)
 >> How does your argument parsing code avoid overflowing the user's stack page?
 >> What are the efficiency considerations of your approach?
+
+The total size of all the arguments passed and the number of arguments are checked in order to make sure that they would fit in a single page after the pointers and other necessary stack values.
+
+As each argument is parsed, it is calculated how much space on the stack it will take. This is added to a total argv size variable. As each argv needs a corresponding pointer on the stack, the equation: total_arg_size + argc + 4 < PGSIZE can be used to determine whether there will be enough space in the user page to store this stack. If there is not, the process terminates, freeing the user page.
+
+The approach we have taken does include some extra calculation during argument passing but it ensures that a page fault exception can never occur.  We could have waited for a page fault however this would produce the error after the stack had filled the page which doesn’t allow for fast and efficient freeing of garbage memory for other processes.
 
 ---- RATIONALE ----
 
@@ -64,6 +70,8 @@ FirstName LastName <email@domain.example>
 >> Describe how your code ensures safe memory access of user provided data from
 >> within the kernel. 
 
+Every pointer in a syscall is checked using pagedir_get_page() and is_user_vaddr() to ensure that it is a pointer into user allocated memory before it can be dereferenced. For memory access in the user program, if an invalid address is attempted to be accessed then the page fault interrupt handler is called and the program is terminated.
+
 >> B3: (3 marks)
 >> Suppose that we choose to verify user provided pointers by validating them 
 >> before use (i.e. using the first method described in the spec).
@@ -71,16 +79,45 @@ FirstName LastName <email@domain.example>
 >> table (e.g. calls to pagedir_get_page()) that would need to be made in the 
 >> following cases?
 >> a) A system call that passes the kernel a pointer to 10 bytes of user data.
+
+1. Check pointer has been passed as argument
+2. Check pointer points to valid user memory
+3. Check pointer + 10 points to valid user memory
+So 3 calls.
+
 >> b) A system call that passes the kernel a pointer to a full page 
 >>    (4,096 bytes) of user data.
+
+1. Check pointer has been passed as argument
+2. Check pointer points to valid user memory
+3. Check pointer + PGSIZE points to valid user memory
+So 3 calls.
+
 >> c) A system call that passes the kernel a pointer to 4 full pages 
 >>    (16,384 bytes) of user data.
+
+1. Check pointer has been passed as argument
+2. Check pointer points to valid user memory
+3. Check pointer every PGSIZE addresses until pointer + 4 * PGSIZE points to valid user memory
+So 6 calls.
+
 >> You must briefly explain the checking tactic you would use and how it applies 
 >> to each case to generate your answers.
 
 >> B4: (2 marks)
 >> When an error is detected during a system call handler, how do you ensure 
 >> that all temporarily allocated resources (locks, buffers, etc.) are freed?
+
+If an error occurs during a system call, the system call does not return immediately if temporarily allocated resources exist, instead the error code will be stored in the interrupt frames eax register, and the code frees the allocated resources before returning.
+
+For example, for a syscall and a function which performs an operation that could fail:
+
+syscall () {
+  intr_frame f;
+  lock_acquire (&file_lock);
+  f->eax = succeed_or_fail ();
+  lock_release (&file_lock);
+}
 
 >> B5: (8 marks)
 >> Describe your implementation of the "wait" system call and how it interacts 
