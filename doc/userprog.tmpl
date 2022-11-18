@@ -66,11 +66,15 @@ The function strtok() uses a global variable to store state in-between calls and
 >> Identify three advantages of the Unix approach.
 
 1. Efficiency
-	With the Unix approach, we avoid leaving the user space to go to the kernel and back for this separation.
+With the Unix approach, we avoid leaving the user space to go to the kernel and back for this separation.
 
 2. Security
-	The Unix approach ensures that the user cannot execute a program on the kernel as the commands and arguments
-	always stay in the user space. This provides additional security to the kernel.
+The Unix approach ensures that the user cannot execute a program on the kernel as the commands and arguments
+always stay in the user space. This provides additional security to the kernel.
+
+3.. More Flexibility
+There can be many shell interpreters for different purposes without making changes in the kernel. Also, allowing each user to use a different shell.
+
 
                  SYSTEM CALLS
                  ============
