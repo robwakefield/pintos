@@ -33,6 +33,7 @@ static void *push_args_on_stack (const struct arguments *args);
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
    thread id, or TID_ERROR if the thread cannot be created. */
+int count = 0;
 tid_t
 process_execute (const char *file_name) 
 {
@@ -42,6 +43,7 @@ process_execute (const char *file_name)
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0);
+  
   fn_copy_begin = fn_copy;
   if (fn_copy == NULL)
     return TID_ERROR;
@@ -52,6 +54,7 @@ process_execute (const char *file_name)
   args = palloc_get_page (PAL_USER |PAL_ZERO);
   if (args == NULL) {
     palloc_free_page (fn_copy_begin); 
+
     return TID_ERROR;
   }
 
@@ -531,6 +534,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
         
         /* Get a new page of memory. */
         kpage = palloc_get_page (PAL_USER);
+
         if (kpage == NULL){
           return false;
         }
@@ -539,6 +543,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
         if (!install_page (upage, kpage, writable)) 
         {
           palloc_free_page (kpage);
+
           return false; 
         }     
         
@@ -574,6 +579,7 @@ setup_stack (const struct arguments *args, void **esp)
   bool success = false;
 
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+
   if (kpage != NULL) 
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
@@ -581,7 +587,9 @@ setup_stack (const struct arguments *args, void **esp)
         *esp = push_args_on_stack (args);
       } else {
         palloc_free_page (kpage);
+
       }
+      
     }
   return success;
 }

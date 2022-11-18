@@ -2,6 +2,7 @@
 #define USERPROG_SYSCALL_H
 
 #define FD_SIZE 32
+#define FD_NUM 28
 
 void syscall_init (void);
 void exit_with_code (int status);
