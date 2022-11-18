@@ -114,7 +114,7 @@ struct thread
     bool load_status;
     bool waited;
 
-    struct list open_fds;              /* List of open file descriptors of the process. */
+    struct list open_file_list;        /* List of files which the current process has open */
 
     struct semaphore sema_wait;        /* Semaphore to be used when process is waiting. */
     struct semaphore sema_load;        /* Semaphore to block when parent is waiting for child to load. */
@@ -163,6 +163,8 @@ bool compare_priority(const struct list_elem *first, const struct list_elem *sec
 void add_to_ready_list (struct thread *t);
 void thread_add_lock (struct lock *lock);
 void thread_remove_lock (struct lock *lock);
+
+void thread_add_fd (int fd);
 
 /* Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func (struct thread *t, void *aux);
