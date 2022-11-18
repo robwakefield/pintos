@@ -48,20 +48,28 @@ process_execute (const char *file_name)
 
   /* Parse command line input into program name and arguments. */
   struct arguments *args;
-  args = palloc_get_page (PAL_USER);
+  args = palloc_get_page (PAL_USER |PAL_ZERO);
   if (args == NULL)
     return TID_ERROR;
 
-  printf("1\n");
   char *arg_val, *s_ptr;
   int args_size = 0; /* Ensure arguments are not too large to be placed on the stack */
+
   for (arg_val = strtok_r (fn_copy, " ", &s_ptr); arg_val != NULL; arg_val = strtok_r (NULL, " ", &s_ptr)) {
-    printf("LOL\n");
+  
+
+
+
     args->argv[args->argc] = arg_val;
+    
     args->argc++;
+
+    
+
     args_size += strlen (arg_val);
+
   }
-  printf("4\n");
+
   /* Check arguments will fit on stack 
    * 4 bytes are reserved for word-align, argv, argc, return address */
   if (args_size + args->argc + 4 > PGSIZE) {
@@ -347,7 +355,13 @@ load (const struct arguments *args, void (**eip) (void), void **esp)
 
   /* Deny writes to open file */
   file_deny_write (file);
-  thread_add_fd (assign_fd (file));
+  lock_acquire(&filesys_lock);
+  int fd = assign_fd (file);
+  lock_release(&filesys_lock);
+  if (fd == -1 ){
+    exit_with_code(-1);
+  }
+  thread_add_fd (fd);
 
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr

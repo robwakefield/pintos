@@ -102,9 +102,6 @@ syscall_exit (struct intr_frame *f) {
 void
 syscall_exec (struct intr_frame *f) {
   const char *cmd_line = (char*) valid_pointer (*(void**) get_argument (f, 0));
-  if (cmd_line == NULL){
-    exit_with_code(-1);
-  }
   tid_t child_tid = process_execute (cmd_line);
   f->eax = child_tid;
 }
@@ -148,7 +145,7 @@ static struct fdPage * newFilePage(){
     exit_with_code(-1);
   }
   list_push_back(&file_page_list,&page->elem);
-  page->free = 63;
+  page->free = 6;
   return page;
 }
 
@@ -158,18 +155,18 @@ static struct fdTable* newFileTable(int tid){
     struct fdPage *page = list_entry(e,struct fdTable, elem);
     if(page->free > 0){
       for(int i = 0; i<6;i++){
-        if ((1<<i)&page->free == 1){
-          struct fdTable *table = &(page->tables[i]);
+        struct fdTable *table = &(page->tables[i]);
+        if (table->tid == 0){          
           table->tid = tid;
-          table->tabNum = i;
+          table->tabNum = 0;
           table->nextTable = NULL;
-          table->free = 6;
+          table->free = 32;
           table->elem.prev == NULL;
           table->elem.next == NULL;
           table->page = page;
           table->prevTable = NULL; 
           memset(&(table->table),0,sizeof(table->table));
-          page->free -= 1<<i;
+          page->free -= 1;
           return &table;
         }
       }
@@ -180,7 +177,7 @@ static struct fdTable* newFileTable(int tid){
   table->tid = tid;
   table->tabNum = 0;
   table->nextTable = NULL;
-  table->free = 6;
+  table->free = 32;
   table->elem.prev == NULL;
   table->elem.next == NULL;
   table->page = page;
@@ -199,17 +196,20 @@ static struct fdTable* tidFileTable(int tid){
     }
   }
   return NULL;
-  
-  return table;
 }
 
+static int maxFileTab = 2;
+
 static struct fdTable* extendFDTable(struct fdTable* table){
-  lock_release(&filesys_lock);
-  exit_with_code(-1);
   ASSERT(table != NULL);
+  if(table->tabNum == maxFileTab){
+    return NULL;
+  }
+
   struct fdTable *newTable = newFileTable(thread_current());
   table->nextTable = newTable;
   newTable -> prevTable = table;
+  newTable->tabNum = table->tabNum + 1;
   return newTable;
 }
 
@@ -218,6 +218,9 @@ int assign_fd(struct file *file){
   struct fdTable *table = tidFileTable(thread_current());
   if(table == NULL){
     table = newFileTable(thread_current());
+    if(table == NULL){
+      return -1;
+    }
     table->tabNum = 0;
     list_push_back(&file_list,&(table->elem));
   }
@@ -242,6 +245,9 @@ int assign_fd(struct file *file){
   }
   
   struct fdTable *tableT = extendFDTable(table);
+  if (tableT == NULL){
+    return -1;
+  }
   tableT->table[0] == file;
   return fd + 2;
 
@@ -274,21 +280,61 @@ struct file* fd_to_file(int i){
 }
 
 void freeTable(struct fdTable *table){
+  if(table == NULL){
+    return;
+  }
   if(table->free == 32 && table->prevTable == NULL){
+
     struct fdTable *prev = table->prevTable;
-    table->page->free = table->page->free | 1<<table->tabNum;
+ 
+    table->page->free += 1;
+
     table->prevTable = NULL;
+
+    
+
     if(table->tabNum == 0){
       list_remove(&table->elem);
     }
-    if(table->page->free == 63){
+ 
+    if(table->page->free == 6){
+  
       list_remove(&table->page->elem);
+
       palloc_free_page(table->page);
+
     }else{
+
       memset(table,0,sizeof(struct fdTable));
+      cleanFileMemory(table);
     }
-    freeTable(prev);
+
+    if(prev != NULL){
+      prev->nextTable = NULL;
+      freeTable(prev);
+    }
+    
+
         
+  }
+}
+
+void cleanFileMemory(struct fdTable *table){
+  struct fdPage *page = list_entry(list_end(&file_page_list),struct fdPage, elem);
+  struct fdTable *endTable;
+  for (int i = 0; i < 6; i++){
+    endTable = &page->tables[i];
+    if(endTable->tid != 0){
+      *table = *endTable;
+      if(table->prevTable != NULL){
+        table->prevTable->nextTable = table;
+      }
+      if(table->nextTable != NULL){
+        table->nextTable->prevTable = table;
+      }
+      freeTable(endTable);
+      return;
+    }
   }
 }
 
@@ -313,15 +359,17 @@ void remove_fd(int i){
 
 void closeProcess(int tid){
   struct fdTable *table = tidFileTable(tid);
-  for(struct fdTable *table = tidFileTable(thread_current());(table != NULL);table = table->nextTable){
+  for(struct fdTable *table = tidFileTable(thread_current());(table != NULL);){
     for(int i = 0; i<32 && table->free <32 ;i++){
       if (table->table[i] != NULL){
         file_close(table->table[i]);
         table->table[i] = NULL;
         table->free += 1;
       }
-    }
+    }    
+    table = table->nextTable;
     freeTable(table);
+
   }
 }
 
