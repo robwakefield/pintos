@@ -54,7 +54,7 @@ process_execute (const char *file_name)
   args = palloc_get_page (PAL_USER |PAL_ZERO);
   if (args == NULL) {
     palloc_free_page (fn_copy_begin); 
-
+    palloc_free_page (args);
     return TID_ERROR;
   }
 
@@ -83,6 +83,7 @@ process_execute (const char *file_name)
   if (tid != TID_ERROR) {
     /* Block parent until load is successful. */
     sema_down (&thread_current ()->sema_load);
+    palloc_free_page(fn_copy); //NEW
   }
 
   if (!thread_current ()->load_status) {
