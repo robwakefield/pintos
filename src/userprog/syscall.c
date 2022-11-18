@@ -141,7 +141,6 @@ struct fdPage{
 static struct fdPage * newFilePage(){
   struct fdPage *page = palloc_get_page(PAL_ZERO);
   if(&page->elem == NULL){
-    exit_with_code(-1);
     return NULL;
   }
   list_push_back(&file_page_list,&page->elem);
@@ -173,6 +172,9 @@ static struct fdTable* newFileTable(int tid){
     }
   }
   struct fdPage *page = newFilePage();
+  if (page == NULL) {
+    return NULL;
+  }
   struct fdTable *table = &(page->tables[0]);
   table->tid = tid;
   table->tabNum = 0;
@@ -207,6 +209,9 @@ static struct fdTable* extendFDTable(struct fdTable* table){
   }
 
   struct fdTable *newTable = newFileTable(thread_current());
+  if (newTable == NULL) {
+    return NULL;
+  }
   table->nextTable = newTable;
   newTable -> prevTable = table;
   newTable->tabNum = table->tabNum + 1;
@@ -229,13 +234,11 @@ int assign_fd(struct file *file){
     if(table->free > 0){
       for (int i = 0; i < FD_SIZE; i++) {
         if (table->table[i] == NULL) {
-
           table->table[i] = file;
           table->free -= 1;
           return fd + i;
         }
       }
-      
     }
     if(table->nextTable == NULL){
         break;
@@ -259,13 +262,7 @@ struct file* fd_to_file(int i){
   }
   for(struct fdTable *table = tidFileTable(thread_current());(table != NULL);table = table->nextTable){
     if(fd < FD_SIZE){
-      if(table->table[fd] != NULL){
-        return table->table[fd];
-      }else{
-        lock_release(&filesys_lock);
-        exit_with_code (-1);
-        return NULL;
-      }
+      return table->table[fd];
     }
     fd -= FD_SIZE;
   }
