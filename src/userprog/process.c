@@ -36,12 +36,13 @@ static void *push_args_on_stack (const struct arguments *args);
 tid_t
 process_execute (const char *file_name) 
 {
-  char *fn_copy;
+  char *fn_copy, fn_copy_begin;
   tid_t tid;
   
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0);
+  fn_copy_begin = fn_copy;
   if (fn_copy == NULL)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
@@ -49,26 +50,21 @@ process_execute (const char *file_name)
   /* Parse command line input into program name and arguments. */
   struct arguments *args;
   args = palloc_get_page (PAL_USER |PAL_ZERO);
-  if (args == NULL)
+  if (args == NULL) {
+    palloc_free_page (fn_copy_begin); 
     return TID_ERROR;
+  }
 
   char *arg_val, *s_ptr;
   int args_size = 0; /* Ensure arguments are not too large to be placed on the stack */
 
   for (arg_val = strtok_r (fn_copy, " ", &s_ptr); arg_val != NULL; arg_val = strtok_r (NULL, " ", &s_ptr)) {
-  
-
-
-
     args->argv[args->argc] = arg_val;
-    
     args->argc++;
-
-    
-
     args_size += strlen (arg_val);
-
   }
+
+  palloc_free_page (fn_copy_begin);
 
   /* Check arguments will fit on stack 
    * 4 bytes are reserved for word-align, argv, argc, return address */
@@ -81,9 +77,7 @@ process_execute (const char *file_name)
   char *prog_name = args->argv[0]; 
   tid = thread_create (prog_name, PRI_DEFAULT, start_process, args);
 
-  if (tid == TID_ERROR) {
-    palloc_free_page (fn_copy); 
-  } else {
+  if (tid != TID_ERROR) {
     /* Block parent until load is successful. */
     sema_down (&thread_current ()->sema_load);
   }
@@ -111,7 +105,6 @@ start_process (void *aux)
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (args, &if_.eip, &if_.esp);
 
-  /* If load failed, quit. */
   palloc_free_page (args);
 
   struct thread *curr = thread_current ();
@@ -121,7 +114,7 @@ start_process (void *aux)
   if (!success) {
     curr->exit_status = -1;
     sema_up (&curr->parent->sema_load);
-    thread_exit ();
+    exit_with_code (-1);
   } else {
     sema_up (&curr->parent->sema_load);
   }
