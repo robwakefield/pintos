@@ -141,8 +141,8 @@ struct fdPage{
 static struct fdPage * newFilePage(){
   struct fdPage *page = palloc_get_page(PAL_ZERO);
   if(&page->elem == NULL){
-    lock_release(&filesys_lock);
     exit_with_code(-1);
+    return NULL;
   }
   list_push_back(&file_page_list,&page->elem);
   page->free = 6;
@@ -321,7 +321,6 @@ void cleanFileMemory(struct fdTable *table){
 void remove_fd(int i){
   int fd = i - 2;
   if(fd < 0){
-    lock_release(&filesys_lock);
     return;
   }
   for(struct fdTable *table = tidFileTable(thread_current());(table != NULL);table = table->nextTable){
@@ -333,7 +332,6 @@ void remove_fd(int i){
     }
     i -= FD_SIZE;
   }
-  lock_release(&filesys_lock);
 }
 
 void closeProcess(int tid){
