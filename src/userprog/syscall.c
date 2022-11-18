@@ -279,36 +279,23 @@ void freeTable(struct fdTable *table){
     return;
   }
   if(table->free == FD_SIZE && table->nextTable == NULL){
-
     struct fdTable *prev = table->prevTable;
- 
     table->page->free += 1;
-
     table->prevTable = NULL;
-
     if(table->tabNum == 0){
       list_remove(&table->elem);
     }
- 
     if(table->page->free == 6){
-  
       list_remove(&table->page->elem);
-
       palloc_free_page(table->page);
-
     }else{
-
       memset(table,0,sizeof(struct fdTable));
       cleanFileMemory(table);
     }
-
     if(prev != NULL){
       prev->nextTable = NULL;
       freeTable(prev);
     }
-    
-
-        
   }
 }
 
@@ -350,7 +337,8 @@ void remove_fd(int i){
 }
 
 void closeProcess(int tid){
-  for(struct fdTable *table = tidFileTable(tid);(table != NULL);){
+  struct fdTable *table;
+  for(table = tidFileTable(tid);(table != NULL);){
     for(int i = 0; i < FD_SIZE && table->free < FD_SIZE ;i++){
       if (table->table[i] != NULL){
         file_close(table->table[i]);
@@ -358,8 +346,11 @@ void closeProcess(int tid){
         table->free += 1;
       }
     }    
+    if (table->nextTable == NULL) {
+      freeTable(table);
+      return;
+    }
     table = table->nextTable;
-    freeTable(table);
   }
 }
 

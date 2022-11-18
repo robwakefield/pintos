@@ -444,6 +444,7 @@ load (const struct arguments *args, void (**eip) (void), void **esp)
   if (!success) {
     lock_acquire(&filesys_lock);
     file_close (file);
+    remove_fd (fd);
     lock_release(&filesys_lock);
   }
   return success;
