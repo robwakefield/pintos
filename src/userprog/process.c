@@ -354,7 +354,7 @@ load (const struct arguments *args, void (**eip) (void), void **esp)
   int fd = assign_fd (file);
   lock_release(&filesys_lock);
   if (fd == -1 ){
-    exit_with_code(-1);
+    goto done;
   }
   
 
@@ -441,7 +441,6 @@ load (const struct arguments *args, void (**eip) (void), void **esp)
 
  done:
   /* We arrive here whether the load is successful or not. */
-  // palloc_free_page (args);
   if (!success) {
     lock_acquire(&filesys_lock);
     file_close (file);
