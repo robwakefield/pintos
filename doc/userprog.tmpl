@@ -8,9 +8,9 @@
 
 >> Fill in the names and email addresses of your group members.
 
-FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
+Rob Wakefield   <rgw20@ic.ac.uk>
+Nada Struharova <ns2321@ic.ac.uk>
+Harrison Barker <hb321@ic.ac.uk>
 
 ---- PRELIMINARIES ----
 
@@ -31,11 +31,39 @@ FirstName LastName <email@domain.example>
 >> global or static variable, `typedef', or enumeration. 
 >> Identify the purpose of each in roughly 25 words.
 
+static struct list file_list; //list of open files/file holders;
+static struct list file_page_list; //list of open pages;
+
+struct fdPage{ //The file power is drawn from.
+  struct list_elem elem;
+  int free;
+  struct fdTable tables[FD_NUM];
+};
+struct fdTable{ //Store an array of pointers to file indexed by an fd.
+  int tid;
+  int tabNum;
+  struct list_elem elem;
+  struct fdTable *nextTable;
+  struct fdTable *prevTable;
+  struct fdPage *page;
+  int free;dinoaurs;
+  struct file * table[FD_SIZE];
+};
+
+struct lock filesys_lock; A lock used to Synchronise the file system
+
+
 ---- ALGORITHMS ----
 
 >> A2: (2 marks)
 >> How does your argument parsing code avoid overflowing the user's stack page?
 >> What are the efficiency considerations of your approach?
+
+The total size of all the arguments passed and the number of arguments are checked in order to make sure that they would fit in a single page after the pointers and other necessary stack values.
+
+As each argument is parsed, it is calculated how much space on the stack it will take. This is added to a total argv size variable. As each argv needs a corresponding pointer on the stack, the equation: total_arg_size + argc + 4 < PGSIZE can be used to determine whether there will be enough space in the user page to store this stack. If there is not, the process terminates, freeing the user page.
+
+The approach we have taken does include some extra calculation during argument passing but it ensures that a page fault exception can never occur.  We could have waited for a page fault however this would produce the error after the stack had filled the page which doesn’t allow for fast and efficient freeing of garbage memory for other processes.
 
 ---- RATIONALE ----
 
@@ -43,10 +71,23 @@ FirstName LastName <email@domain.example>
 >> Pintos does not implement strtok() because it is not thread safe. 
 >> Explain the problem with strtok() and how strtok_r() avoids this issue.
 
+The function strtok() uses a global variable to store state in-between calls and therefore is not necessarily thread-safe. Calling this function from multiple threads simultaneously can result in undefined or incorrect behaviour. The reentrant version, strtok_r() avoids this issue by taking a user-provided pointer as an extra argument and storing the state between calls in this pointer. Hence allowing strtok_r() to be called by multiple threads simultaneously without corrupting the data held in one static pointer shared by all calls to the function.
+
 >> A4: (3 marks)
 >> In Pintos, the kernel separates commands into an executable name and arguments. 
 >> In Unix-like systems, the shell does this separation. 
 >> Identify three advantages of the Unix approach.
+
+1. Efficiency
+With the Unix approach, we avoid leaving the user space to go to the kernel and back for this separation.
+
+2. Security
+The Unix approach ensures that the user cannot execute a program on the kernel as the commands and arguments
+always stay in the user space. This provides additional security to the kernel.
+
+3.. More Flexibility
+There can be many shell interpreters for different purposes without making changes in the kernel. Also, allowing each user to use a different shell.
+
 
                  SYSTEM CALLS
                  ============
@@ -58,11 +99,27 @@ FirstName LastName <email@domain.example>
 >> global or static variable, `typedef', or enumeration. 
 >> Identify the purpose of each in roughly 25 words.
 
+Added to struct thread:
+	struct thread *parent;             /* Records parent's thread ID. */
+
+	struct list child_list;            /* List of all child threads of the process. */
+	struct list_elem child_elem;       /* For storing child thread in the parent's list of children. */
+
+	int exit_status;			             /* Holds thread's exit status after calling process_exit. */
+	bool load_status;			             /* Tracks the load status of the most recent child thread loaded. */
+	bool waited;                       /* Tracks whether the thread has already been waited for by its parent. */
+
+	struct semaphore sema_wait;        /* Semaphore to be used when process is waiting. */
+	struct semaphore sema_load;        /* Semaphore to block when parent is waiting for child to load. */
+	struct semaphore sema_exit;        /* Synchronise removing child thread from parent's list of children. */
+
 ---- ALGORITHMS ----
 
 >> B2: (2 marks)
 >> Describe how your code ensures safe memory access of user provided data from
 >> within the kernel. 
+
+Every pointer in a syscall is checked using pagedir_get_page() and is_user_vaddr() to ensure that it is a pointer into user allocated memory before it can be dereferenced. For memory access in the user program, if an invalid address is attempted to be accessed then the page fault interrupt handler is called and the program is terminated.
 
 >> B3: (3 marks)
 >> Suppose that we choose to verify user provided pointers by validating them 
@@ -71,20 +128,76 @@ FirstName LastName <email@domain.example>
 >> table (e.g. calls to pagedir_get_page()) that would need to be made in the 
 >> following cases?
 >> a) A system call that passes the kernel a pointer to 10 bytes of user data.
+
+Least:
+  1. Check pointer has been passed as argument
+  2. Check pointer points to valid user memory
+  3. Check pointer + 10 points to valid user memory
+  So 3 calls.
+Greatest:
+  1. Check pointer has been passed as argument
+  2. Check pointer points to valid user memory
+  3. Check pointer + n points to valid user memory, for n = range(1, 10)
+  So 12 calls.
+
 >> b) A system call that passes the kernel a pointer to a full page 
 >>    (4,096 bytes) of user data.
+
+Least:
+  1. Check pointer has been passed as argument
+  2. Check pointer points to valid user memory
+  3. Check pointer + PGSIZE points to valid user memory
+  So 3 calls.
+Greatest:
+  1. Check pointer has been passed as argument
+  2. Check pointer points to valid user memory
+  3. Check pointer + n points to valid user memory, for n = range(1, PGSIZE)
+  So PGSIZE + 2 calls.
+
 >> c) A system call that passes the kernel a pointer to 4 full pages 
 >>    (16,384 bytes) of user data.
+
+Least
+  1. Check pointer has been passed as argument
+  2. Check pointer points to valid user memory
+  3. Check pointer every PGSIZE addresses until pointer + 4 * PGSIZE points to valid user memory
+  So 6 calls.
+Greatest
+  1. Check pointer has been passed as argument
+  2. Check pointer points to valid user memory
+  3. Check pointer + n points to valid user memory, for n = range(1, 4 * PGSIZE)
+  So 4 * PGSIZE + 2 calls.
+
 >> You must briefly explain the checking tactic you would use and how it applies 
 >> to each case to generate your answers.
+
+We used the check before dereferencing implementation of invalid memory access detection. This requires the arguments on the stack and the pointers they return to be checked using our is_valid_pointer() method. So for example in b) we call is_valid_pointer(f->esp-4), is_valid_pointer(pointer) and is_valid_pointer(pointer + PGSIZE).
 
 >> B4: (2 marks)
 >> When an error is detected during a system call handler, how do you ensure 
 >> that all temporarily allocated resources (locks, buffers, etc.) are freed?
 
+If an error occurs during a system call, the system call does not return immediately if temporarily allocated resources exist, instead the error code will be stored in the interrupt frames eax register, and the code frees the allocated resources before returning.
+
+For example, for a syscall and a function which performs an operation that could fail:
+
+syscall () {
+  intr_frame f;
+  lock_acquire (&file_lock);
+  f->eax = succeed_or_fail ();
+  lock_release (&file_lock);
+}
+
 >> B5: (8 marks)
 >> Describe your implementation of the "wait" system call and how it interacts 
 >> with process termination for both the parent and child.
+
+The "wait" system call in return calls "process_wait" from "process.c".
+
+When process_wait is called on child C, the corresponding child thread will be found in the parent's list of children. If the child thread is not found process_wait returns -1. If the child thread is found, process_wait checks whether the current thread is a direct parent of C and returns -1 if not. The function process_wait also returns -1 if the child has already been waited for once by its parent. Next, C is set to have been waited for and the parent is blocked on C's semaphore sema_wait, waiting until C exits.
+
+Once C calls process_exit, the sema_wait is unblocked and the parent continues its execution. C now gets blocked in return on its semaphore sema_exit until C is safely removed from the parent's list of children. When the parent removes it from this list, C is unblocked so it can continue with exiting. At this point, C potentially still has child threads that could not terminate as they could have been waited for and asked for their exit status. During process_exit, C unblocks each of its child threads by releasing their semaphore sema_wait. Finally, all of C's resources are freed.
+
 
 ---- SYNCHRONIZATION ----
 
@@ -94,6 +207,8 @@ FirstName LastName <email@domain.example>
 >> How does your code ensure this? 
 >> How is the load success/failure status passed back to the thread that calls 
 >> "exec"?
+
+This is ensured by using the semaphore sema_load. During process_execute, called by the "exec" system call, the parent thread gets blocked on sema_load until the child thread successfully loads and "ups" the semaphore. The load_status in the parent thread is updated to the success status of the load function called on the new process. Inside process_execute, we return -1 if the load_status is false, i.e. when the load of the most recent child process failed.
 
 >> B7: (5 marks)
 >> Consider parent process P with child process C. 
@@ -105,12 +220,29 @@ FirstName LastName <email@domain.example>
 >> Additionally, how do you ensure that all resources are freed regardless of 
 >> the above case? 
 
+i) When P calls wait(C) before C exits, P is blocked on C's semaphore sema_wait until C exits. Once C exits, it unblocks P so it can continue executing.
+
+ii) When C exits, it "ups" its semaphore sema_wait. Therefore if P calls wait(C) after C exits, P can simply down sema_wait without waiting, return the exit status of C and continue with its normal execution.
+
+We use the semaphore sema_exit to block each child thread:
+1. until the parent safely removes them from its list of children in process_wait OR
+2. until the parent exits with process_exit. Inside process_exit, the exiting thread releases sema_exit semaphore for all of its child threads.
+
+iii) and iv)
+If P terminates without waiting before or after C exits, C is free to exit whenever without being waited for, since all P's children, including C, are unblocked on sema_exit when P terminates.
+
 ---- RATIONALE ----
 
 >> B8: (2 marks)
 >> Why did you choose to implement safe access of user memory from the kernel in 
 >> the way that you did?
 
+We knew that we would have to perform many checks to ensure safe user memory access, so we were careful to use a function, is_valid_pointer(), before dereferencing any user memory. We did this so that system calls could see an invalid memory access attempt before executing a possibly expensive operation only to find that the pointer causes a page fault exception. For user program calls we modified the page fault exception to exit once an invalid pointer was passed.
+
 >> B9: (2 marks)
 >> What advantages and disadvantages can you see to your design for file 
 >> descriptors?
+
+We use small arrays linked together to store our data. This means that there is no fixed limit on the number of files a program can open. It also means that an average program without many open files get the benefit of being able to directly index it's first array of files without having to navigate through a linked list.
+This does mean that memory is allocated that is not being used since it can only be allocated in larger chunks meaning that if lots of programs only wanted to open a single file a lot of memory will be wasted. 
+When a table is cleared it will attempt to move tables from the back page into the space in order to try to free a memory page. This helps keep wasted memeory low.

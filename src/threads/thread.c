@@ -260,6 +260,10 @@ thread_create (const char *name, int priority,
   sf->eip = switch_entry;
   sf->ebp = 0;
 
+  /* Put new thread into parent's list of children and set child's parent. */
+  list_push_back (&thread_current()->child_list, &t->child_elem);
+  t->parent = thread_current ();
+
   intr_set_level (old_level);
 
   /* Add to run queue. */
@@ -772,12 +776,24 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
-  t->base_priority = priority; /* keep track of base priority due to donations */
+  t->base_priority = priority;
   t->nice = 0;
   t->nice = running_thread()->nice;
   t->recent_cpu = 0;
   t->recent_cpu = running_thread()->recent_cpu;
+  t->parent = NULL;
+
+  t->waited = false;
+
+#ifdef USERPROG
+  list_init(&t->child_list);
+
+  sema_init(&t->sema_wait, 0);
+  sema_init (&t->sema_load, 0);
+  sema_init (&t->sema_exit, 0);
   
+  t->exit_status = -1;
+#endif
   
   list_init(&(t->locks));
   t->magic = THREAD_MAGIC;

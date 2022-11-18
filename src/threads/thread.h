@@ -85,30 +85,44 @@ typedef int tid_t;
 struct thread
   {
     /* Owned by thread.c. */
-    tid_t tid;                          /* Thread identifier. */
-    enum thread_status status;          /* Thread state. */
-    char name[16];                      /* Name (for debugging purposes). */
-    uint8_t *stack;                     /* Saved stack pointer. */
-    int priority;                       /* Priority (Effective Priority) */
-    int base_priority;                  /* Base Priority */
-    int nice;                           // nice value for advanced scheduler
+    tid_t tid;                         /* Thread identifier. */
+    enum thread_status status;         /* Thread state. */
+    char name[16];                     /* Name (for debugging purposes). */
+    uint8_t *stack;                    /* Saved stack pointer. */
+    int priority;                      /* Priority (Effective Priority) */
+    int base_priority;                 /* Base Priority */
+    int nice;                          /* Nice value for advanced scheduler */
     int recent_cpu;
-    struct list_elem allelem;           /* List element for all threads list. */
+    struct list_elem allelem;          /* List element for all threads list. */
 
-    struct lock *waiting_on;             /* The lock currently blocking the thread. */
-    struct list locks;                  /* List of locks the thread is currently holding. */
+    struct lock *waiting_on;           /* The lock currently blocking the thread. */
+    struct list locks;                 /* List of locks the thread is currently holding. */
 
     /* Shared between thread.c and synch.c. */
-    struct list_elem elem;              /* List element. */
+    struct list_elem elem;             /* List element. */ 
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
-    uint32_t *pagedir;                  /* Page directory. */
+    uint32_t *pagedir;                 /* Page directory. */
+
+    struct thread *parent;             /* Records parent's thread ID. */
+
+    struct list child_list;            /* List of all child threads of the process. */
+    struct list_elem child_elem;       /* For storing child thread in the parent's list of children. */
+
+    int exit_status;
+    bool load_status;
+    bool waited;
+
+    struct semaphore sema_wait;        /* Semaphore to be used when process is waiting. */
+    struct semaphore sema_load;        /* Semaphore to block when parent is waiting for child to load. */
+    struct semaphore sema_exit;        /* Synchronise removing child thread from parent's list of children. */
+
 #endif
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
-  };
+   };
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
@@ -147,6 +161,8 @@ bool compare_priority(const struct list_elem *first, const struct list_elem *sec
 void add_to_ready_list (struct thread *t);
 void thread_add_lock (struct lock *lock);
 void thread_remove_lock (struct lock *lock);
+
+
 
 /* Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func (struct thread *t, void *aux);
