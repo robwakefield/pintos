@@ -31,8 +31,26 @@ Harrison Barker <hb321@ic.ac.uk>
 >> global or static variable, `typedef', or enumeration. 
 >> Identify the purpose of each in roughly 25 words.
 
+static struct list file_list; //list of open files/file holders;
+static struct list file_page_list; //list of open pages;
 
+struct fdPage{ //The file power is drawn from.
+  struct list_elem elem;
+  int free;
+  struct fdTable tables[FD_NUM];
+};
+struct fdTable{ //Store an array of pointers to file indexed by an fd.
+  int tid;
+  int tabNum;
+  struct list_elem elem;
+  struct fdTable *nextTable;
+  struct fdTable *prevTable;
+  struct fdPage *page;
+  int free;dinoaurs;
+  struct file * table[FD_SIZE];
+};
 
+struct lock filesys_lock; A lock used to Synchronise the file system
 
 
 ---- ALGORITHMS ----
@@ -227,3 +245,4 @@ We knew that we would have to perform many checks to ensure safe user memory acc
 
 We use small arrays linked together to store our data. This means that there is no fixed limit on the number of files a program can open. It also means that an average program without many open files get the benefit of being able to directly index it's first array of files without having to navigate through a linked list.
 This does mean that memory is allocated that is not being used since it can only be allocated in larger chunks meaning that if lots of programs only wanted to open a single file a lot of memory will be wasted. 
+When a table is cleared it will attempt to move tables from the back page into the space in order to try to free a memory page. This helps keep wasted memeory low.

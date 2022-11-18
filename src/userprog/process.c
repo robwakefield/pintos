@@ -534,7 +534,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
         
         /* Get a new page of memory. */
         kpage = palloc_get_page (PAL_USER);
-
         if (kpage == NULL){
           return false;
         }

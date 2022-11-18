@@ -111,7 +111,6 @@ syscall_wait (struct intr_frame *f) {
   f->eax = process_wait (*(tid_t*) get_argument (f, 0));
 }
 
-struct file * table[FD_SIZE] = {0};
 
 static struct list file_list;
 static struct list file_page_list;
@@ -135,7 +134,7 @@ struct fdTable{
 struct fdPage{
   struct list_elem elem;
   int free;
-  struct fdTable tables[6];
+  struct fdTable tables[FD_NUM];
 };
 
 static struct fdPage * newFilePage(){
@@ -144,28 +143,30 @@ static struct fdPage * newFilePage(){
     return NULL;
   }
   list_push_back(&file_page_list,&page->elem);
-  page->free = 6;
+  page->free = FD_NUM;
   return page;
 }
-
+static void init_table(struct fdTable *table,int tid, struct fdPage *page){
+  table->tid = tid;
+  table->tabNum = 0;
+  table->nextTable = NULL;
+  table->free = FD_SIZE;
+  table->elem.prev == NULL;
+  table->elem.next == NULL;
+  table->page = page;
+  table->prevTable = NULL; 
+  memset(&(table->table),0,sizeof(table->table));
+  page->free -= 1;
+}
 static struct fdTable* newFileTable(int tid){
   struct list_elem *e;
   for (e = list_begin (&file_page_list); e != list_end (&file_page_list); e = list_next (e)){
     struct fdPage *page = list_entry(e,struct fdTable, elem);
     if(page->free > 0){
-      for(int i = 0; i<6;i++){
+      for(int i = 0; i<FD_NUM;i++){
         struct fdTable *table = &(page->tables[i]);
         if (table->tid == 0){          
-          table->tid = tid;
-          table->tabNum = 0;
-          table->nextTable = NULL;
-          table->free = FD_SIZE;
-          table->elem.prev == NULL;
-          table->elem.next == NULL;
-          table->page = page;
-          table->prevTable = NULL; 
-          memset(&(table->table),0,sizeof(table->table));
-          page->free -= 1;
+          init_table(table,tid,page);
           return &table;
         }
       }
@@ -176,16 +177,7 @@ static struct fdTable* newFileTable(int tid){
     return NULL;
   }
   struct fdTable *table = &(page->tables[0]);
-  table->tid = tid;
-  table->tabNum = 0;
-  table->nextTable = NULL;
-  table->free = FD_SIZE;
-  table->elem.prev == NULL;
-  table->elem.next == NULL;
-  table->page = page;
-  table->prevTable = NULL;
-  memset(&(table->table),0,sizeof(table->table));
-  page->free -= 1;
+  init_table(table,tid,page);
   return table;
 }
 
@@ -280,7 +272,7 @@ void freeTable(struct fdTable *table){
     if(table->tabNum == 0){
       list_remove(&table->elem);
     }
-    if(table->page->free == 6){
+    if(table->page->free == FD_NUM){
       list_remove(&table->page->elem);
       palloc_free_page(table->page);
     }else{
@@ -297,7 +289,7 @@ void freeTable(struct fdTable *table){
 void cleanFileMemory(struct fdTable *table){
   struct fdPage *page = list_entry(list_end(&file_page_list),struct fdPage, elem);
   struct fdTable *endTable;
-  for (int i = 0; i < 6; i++){
+  for (int i = 0; i < FD_NUM; i++){
     endTable = &page->tables[i];
     if(endTable->tid != 0){
       *table = *endTable;
