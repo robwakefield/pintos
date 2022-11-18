@@ -112,7 +112,7 @@ start_process (void *aux)
   success = load (args, &if_.eip, &if_.esp);
 
   /* If load failed, quit. */
-  palloc_free_page (args->argv[0]);
+  palloc_free_page (args);
 
   struct thread *curr = thread_current ();
 
