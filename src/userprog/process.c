@@ -38,7 +38,7 @@ process_execute (const char *file_name)
 {
   char *fn_copy;
   tid_t tid;
-
+  
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0);
@@ -52,14 +52,16 @@ process_execute (const char *file_name)
   if (args == NULL)
     return TID_ERROR;
 
+  printf("1\n");
   char *arg_val, *s_ptr;
   int args_size = 0; /* Ensure arguments are not too large to be placed on the stack */
   for (arg_val = strtok_r (fn_copy, " ", &s_ptr); arg_val != NULL; arg_val = strtok_r (NULL, " ", &s_ptr)) {
+    printf("LOL\n");
     args->argv[args->argc] = arg_val;
     args->argc++;
     args_size += strlen (arg_val);
   }
-
+  printf("4\n");
   /* Check arguments will fit on stack 
    * 4 bytes are reserved for word-align, argv, argc, return address */
   if (args_size + args->argc + 4 > PGSIZE) {
@@ -187,8 +189,9 @@ process_exit (void)
     struct list_elem *e = list_pop_front (list);
     struct fd_list_item *fd_item = list_entry (e, struct fd_list_item, elem);
     int fd = fd_item->fd;
-    struct file *file = fd_to_file (fd);
-    file_close (file);
+    lock_acquire(&filesys_lock);
+    closeProcess(thread_current());
+    lock_release(&filesys_lock);
   }
 
   sema_up (&cur->sema_wait);
@@ -344,7 +347,7 @@ load (const struct arguments *args, void (**eip) (void), void **esp)
 
   /* Deny writes to open file */
   file_deny_write (file);
-  thread_add_fd (file_to_fd (file));
+  thread_add_fd (assign_fd (file));
 
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -431,7 +434,9 @@ load (const struct arguments *args, void (**eip) (void), void **esp)
   /* We arrive here whether the load is successful or not. */
   // palloc_free_page (args);
   if (!success) {
+    lock_acquire(&filesys_lock);
     file_close (file);
+    lock_release(&filesys_lock);
   }
   return success;
 }
