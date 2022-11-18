@@ -278,7 +278,7 @@ void freeTable(struct fdTable *table){
   if(table == NULL){
     return;
   }
-  if(table->free == FD_SIZE && table->prevTable == NULL){
+  if(table->free == FD_SIZE && table->nextTable == NULL){
 
     struct fdTable *prev = table->prevTable;
  
@@ -353,14 +353,12 @@ void closeProcess(int tid){
   for(struct fdTable *table = tidFileTable(tid);(table != NULL);){
     for(int i = 0; i < FD_SIZE && table->free < FD_SIZE ;i++){
       if (table->table[i] != NULL){
-        printf ("closing:%d:%d\n", i, table->table[i]);
         file_close(table->table[i]);
         table->table[i] = NULL;
         table->free += 1;
       }
     }    
     table = table->nextTable;
-    printf ("next table\n");
     freeTable(table);
   }
 }
