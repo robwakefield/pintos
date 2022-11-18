@@ -192,15 +192,10 @@ process_exit (void)
   struct thread *cur = thread_current ();
   uint32_t *pd;
 
-  struct list *list = &thread_current ()->open_file_list;
-  while (!list_empty (list)) {
-    struct list_elem *e = list_pop_front (list);
-    struct fd_list_item *fd_item = list_entry (e, struct fd_list_item, elem);
-    int fd = fd_item->fd;
-    lock_acquire(&filesys_lock);
-    closeProcess(thread_current());
-    lock_release(&filesys_lock);
-  }
+  lock_acquire(&filesys_lock);
+  closeProcess(thread_current());
+  lock_release(&filesys_lock);
+  
 
   sema_up (&cur->sema_wait);
   
@@ -361,7 +356,7 @@ load (const struct arguments *args, void (**eip) (void), void **esp)
   if (fd == -1 ){
     exit_with_code(-1);
   }
-  thread_add_fd (fd);
+  
 
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr

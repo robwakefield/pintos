@@ -449,12 +449,6 @@ void thread_remove_lock (struct lock *lock)
 
 }
 
-void thread_add_fd (int fd) {
-  struct fd_list_item *fd_item = palloc_get_page (PAL_USER);
-  fd_item->fd = fd;
-  list_push_back (&thread_current ()->open_file_list, &fd_item->elem);
-}
-
 /* Invoke function 'func' on all threads in a list, passing along 'aux'.
    This function must be called with interrupts off. */
 void
@@ -793,7 +787,6 @@ init_thread (struct thread *t, const char *name, int priority)
 
 #ifdef USERPROG
   list_init(&t->child_list);
-  list_init (&t->open_file_list);
 
   sema_init(&t->sema_wait, 0);
   sema_init (&t->sema_load, 0);
