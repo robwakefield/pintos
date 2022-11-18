@@ -255,8 +255,7 @@ int assign_fd(struct file *file){
 struct file* fd_to_file(int i){
   int fd = i - 2;
   if(fd < 0){
-    lock_release(&filesys_lock);
-    exit_with_code (-1);
+    return NULL;
   }
   for(struct fdTable *table = tidFileTable(thread_current());(table != NULL);table = table->nextTable){
     if(fd < FD_SIZE){
@@ -268,10 +267,9 @@ struct file* fd_to_file(int i){
         return NULL;
       }
     }
-    i -= FD_SIZE;
+    fd -= FD_SIZE;
   }
-  lock_release(&filesys_lock);
-  exit_with_code (-1);
+  return NULL;
 }
 
 void freeTable(struct fdTable *table){
