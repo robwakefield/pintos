@@ -18,7 +18,29 @@ static void (*syscall_handlers[20]) (struct intr_frame *);     /* Array of funct
 void exit_with_code (int);
 static void *valid_pointer (void *);
 
+struct fdTable{
+  int tid;
+  int tabNum;
+  struct list_elem elem;
+  struct fdTable *nextTable;
+  struct fdTable *prevTable;
+  struct fdPage *page;
+  int free;
+  struct file * table[FD_SIZE];
+};
+
+struct fdPage{
+  struct list_elem elem;
+  int free;
+  struct fdTable tables[FD_NUM];
+};
+
 void *get_argument (struct intr_frame *f, int i);
+void closeProcess (int);
+int assign_fd (struct file *);
+void remove_fd (int);
+void freeTable (struct fdTable *);
+void cleanFileMemory (struct fdTable *);
 
 /* System call handler functions. */
 void syscall_halt (struct intr_frame *);
@@ -120,24 +142,7 @@ void file_init(){
   list_init(&file_page_list);
 }
 
-struct fdTable{
-  int tid;
-  int tabNum;
-  struct list_elem elem;
-  struct fdTable *nextTable;
-  struct fdTable *prevTable;
-  struct fdPage *page;
-  int free;
-  struct file * table[FD_SIZE];
-};
-
-struct fdPage{
-  struct list_elem elem;
-  int free;
-  struct fdTable tables[FD_NUM];
-};
-
-static struct fdPage * newFilePage(){
+static struct fdPage *newFilePage(void){
   struct fdPage *page = palloc_get_page(PAL_ZERO);
   if(&page->elem == NULL){
     return NULL;
@@ -151,8 +156,8 @@ static void init_table(struct fdTable *table,int tid, struct fdPage *page){
   table->tabNum = 0;
   table->nextTable = NULL;
   table->free = FD_SIZE;
-  table->elem.prev == NULL;
-  table->elem.next == NULL;
+  table->elem.prev = NULL;
+  table->elem.next = NULL;
   table->page = page;
   table->prevTable = NULL; 
   memset(&(table->table),0,sizeof(table->table));
@@ -243,7 +248,7 @@ int assign_fd(struct file *file){
   if (tableT == NULL){
     return -1;
   }
-  tableT->table[0] == file;
+  tableT->table[0] = file;
   return fd;
 }
 
@@ -276,7 +281,7 @@ void freeTable(struct fdTable *table){
       list_remove(&table->page->elem);
       palloc_free_page(table->page);
     }else{
-      memset(table,0,sizeof(struct fdTable));
+      memset (table,0,sizeof(struct fdTable));
       cleanFileMemory(table);
     }
     if(prev != NULL){
@@ -424,7 +429,7 @@ syscall_read (struct intr_frame *f) {
 void
 syscall_write (struct intr_frame *f) {
   int fd = *(int *) get_argument (f, 0);
-  const void *buffer = valid_pointer (*(void**) get_argument (f, 1));
+  void *buffer = valid_pointer (*(void**) get_argument (f, 1));
   unsigned size = *(unsigned *) get_argument (f, 2);
   /* Ensure the entirety of buffer is valid */
   valid_pointer (buffer + size);
