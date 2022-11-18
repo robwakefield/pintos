@@ -38,7 +38,6 @@ struct fd_list_item {
 };
 
 In struct thread:
-  struct list open_fds;              /* List of open file descriptors of the process. */
   struct list open_file_list;        /* List of files which the current process has open */
 
 ---- ALGORITHMS ----
@@ -113,29 +112,49 @@ Every pointer in a syscall is checked using pagedir_get_page() and is_user_vaddr
 >> following cases?
 >> a) A system call that passes the kernel a pointer to 10 bytes of user data.
 
-1. Check pointer has been passed as argument
-2. Check pointer points to valid user memory
-3. Check pointer + 10 points to valid user memory
-So 3 calls.
+Least:
+  1. Check pointer has been passed as argument
+  2. Check pointer points to valid user memory
+  3. Check pointer + 10 points to valid user memory
+  So 3 calls.
+Greatest:
+  1. Check pointer has been passed as argument
+  2. Check pointer points to valid user memory
+  3. Check pointer + n points to valid user memory, for n = range(1, 10)
+  So 12 calls.
 
 >> b) A system call that passes the kernel a pointer to a full page 
 >>    (4,096 bytes) of user data.
 
-1. Check pointer has been passed as argument
-2. Check pointer points to valid user memory
-3. Check pointer + PGSIZE points to valid user memory
-So 3 calls.
+Least:
+  1. Check pointer has been passed as argument
+  2. Check pointer points to valid user memory
+  3. Check pointer + PGSIZE points to valid user memory
+  So 3 calls.
+Greatest:
+  1. Check pointer has been passed as argument
+  2. Check pointer points to valid user memory
+  3. Check pointer + n points to valid user memory, for n = range(1, PGSIZE)
+  So PGSIZE + 2 calls.
 
 >> c) A system call that passes the kernel a pointer to 4 full pages 
 >>    (16,384 bytes) of user data.
 
-1. Check pointer has been passed as argument
-2. Check pointer points to valid user memory
-3. Check pointer every PGSIZE addresses until pointer + 4 * PGSIZE points to valid user memory
-So 6 calls.
+Least
+  1. Check pointer has been passed as argument
+  2. Check pointer points to valid user memory
+  3. Check pointer every PGSIZE addresses until pointer + 4 * PGSIZE points to valid user memory
+  So 6 calls.
+Greatest
+  1. Check pointer has been passed as argument
+  2. Check pointer points to valid user memory
+  3. Check pointer + n points to valid user memory, for n = range(1, 4 * PGSIZE)
+  So 4 * PGSIZE + 2 calls.
 
 >> You must briefly explain the checking tactic you would use and how it applies 
 >> to each case to generate your answers.
+
+We used the check before dereferencing implementation of invalid memory access detection. This requires the arguments on the stack and the pointers they return to be checked using our is_valid_pointer() method. So for example in b) we call is_valid_pointer(f->esp-4), is_valid_pointer(pointer) and is_valid_pointer(pointer + PGSIZE).
 
 >> B4: (2 marks)
 >> When an error is detected during a system call handler, how do you ensure 
@@ -200,6 +219,8 @@ If P terminates without waiting before or after C exits, C is free to exit whene
 >> B8: (2 marks)
 >> Why did you choose to implement safe access of user memory from the kernel in 
 >> the way that you did?
+
+We knew that we would have to perform many checks to ensure safe user memory access, so we were careful to use a function, is_valid_pointer(), before dereferencing any user memory. We did this so that system calls could see an invalid memory access attempt before executing a possibly expensive operation only to find that the pointer causes a page fault exception. For user program calls we modified the page fault exception to exit once an invalid pointer was passed.
 
 >> B9: (2 marks)
 >> What advantages and disadvantages can you see to your design for file 
