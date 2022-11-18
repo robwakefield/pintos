@@ -204,3 +204,6 @@ If P terminates without waiting before or after C exits, C is free to exit whene
 >> B9: (2 marks)
 >> What advantages and disadvantages can you see to your design for file 
 >> descriptors?
+
+We use small arrays linked together to store our data. This means that there is no fixed limit on the number of files a program can open. It also means that an average program without many open files get the benefit of being able to directly index it's first array of files without having to navigate through a linked list.
+This does mean that memory is allocated that is not being used since it can only be allocated in larger chunks meaning that if lots of programs only wanted to open a single file a lot of memory will be wasted. 

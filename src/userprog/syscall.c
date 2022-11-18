@@ -198,7 +198,7 @@ static struct fdTable* tidFileTable(int tid){
   return NULL;
 }
 
-static int maxFileTab = 2;
+static int maxFileTab = 5;
 
 static struct fdTable* extendFDTable(struct fdTable* table){
   ASSERT(table != NULL);
