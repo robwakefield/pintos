@@ -182,12 +182,9 @@ static struct fdTable* tidFileTable(int tid){
       return table;
     }
   }
-  struct fdTable *table = newFileTable(tid);
-  table->tabNum = 0;
-
-
-  list_push_back(&file_list,&(table->elem));
-  return &table;
+  return NULL;
+  
+  return table;
 }
 
 static struct fdTable* extendFDTable(struct fdTable* table){
@@ -199,12 +196,19 @@ static struct fdTable* extendFDTable(struct fdTable* table){
 
 static int assign_fd(struct file *file){
   int fd = 2;
-  for(struct fdTable *table = tidFileTable(thread_current());(table != NULL);table = table->nextTable){
+  struct fdTable *table = tidFileTable(thread_current());
+  if(table == NULL){
+    table = newFileTable(thread_current());
+    table->tabNum = 0;
+    list_push_back(&file_list,&(table->elem));
+  }
+  for(table;(table != NULL);table = table->nextTable){
     if(table->free > 0){
       for (int i = 0; i < 32; i++) {
         if (table->table[i] == NULL) {
 
           table->table[i] = file;
+          table->free -= 1;
           return fd + i;
         }
       }
@@ -213,40 +217,53 @@ static int assign_fd(struct file *file){
   }
   struct fdTable *tableT = extendFDTable(table);
   tableT->table[0] == file;
-  return fd;
+  return fd + 2;
 
 }
 
-
-
-struct file *fd_to_file (int fd){
-  if(fd < 2 || fd>=34 || table[fd - 2] == NULL){
+static struct file* fd_to_file(int i){
+  int fd = i - 2;
+  if(fd < 0){
     lock_release(&filesys_lock);
     exit_with_code (-1);
-
-
     return NULL;
-  } else {
-    return table[fd - 2];
   }
-}
+  for(struct fdTable *table = tidFileTable(thread_current());(table != NULL);table = table->nextTable){
+    if(fd < 32){
+      if(table->table[fd] != NULL){
+        return table->table[fd];
+      }else{
+        lock_release(&filesys_lock);
+        exit_with_code (-1);
+        return NULL;
+      }
 
-
-int file_to_fd (struct file *file) {
-  assign_fd(file);
-  for (int i = 0; i < 32; i++) {
-    if (table[i] == NULL) {
-
-      table[i] = file;
-      return i + 2;
+      
     }
+    i -= 32;
   }
-  return -1;
+  lock_release(&filesys_lock);
+  exit_with_code (-1);
+  return NULL;
 }
 
 
-void remove_fd(int fd){
-  table[fd - 2] = NULL;
+void remove_fd(int i){
+  int fd = i - 2;
+  if(fd < 0){
+    lock_release(&filesys_lock);
+    exit_with_code (-1);
+  }
+  for(struct fdTable *table = tidFileTable(thread_current());(table != NULL);table = table->nextTable){
+    if(fd < 32){
+      table->table[fd] = NULL;
+      table->free += 1;
+      //if(table->free == 32 && table->nextTable == NULL){}
+    }
+    i -= 32;
+  }
+  lock_release(&filesys_lock);
+  exit_with_code (-1);
 }
 
 
@@ -291,7 +308,7 @@ syscall_open (struct intr_frame *f) {
   if (file == NULL) {
     f->eax = -1;
   } else {
-    f->eax = file_to_fd (file);
+    f->eax = assign_fd (file);
   }
 }
 
