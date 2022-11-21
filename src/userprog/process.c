@@ -54,7 +54,6 @@ process_execute (const char *file_name)
   args = palloc_get_page (PAL_USER |PAL_ZERO);
   if (args == NULL) {
     palloc_free_page (fn_copy_begin); 
-    palloc_free_page (args);
     return TID_ERROR;
   }
 
@@ -83,7 +82,7 @@ process_execute (const char *file_name)
   if (tid != TID_ERROR) {
     /* Block parent until load is successful. */
     sema_down (&thread_current ()->sema_load);
-    palloc_free_page(fn_copy); //NEW
+    palloc_free_page(fn_copy); //this one made multi-oom work, not freeing args
   }
 
   if (!thread_current ()->load_status) {
@@ -192,12 +191,6 @@ process_exit (void)
   lock_acquire(&filesys_lock);
   closeProcess(thread_current());
   lock_release(&filesys_lock);
-  
-
-  sema_up (&cur->sema_wait);
-  
-  /* Wait for parent to remove child from its list of child threads before terminating. */
-  sema_down (&cur->sema_exit);
 
   /* Once process exits, stop all children threads waiting blocked on sema_exit. */
   struct list_elem *elem;
@@ -224,6 +217,11 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
+  
+  sema_up (&cur->sema_wait);
+
+  /* Wait for parent to remove child from its list of child threads before terminating. */
+  sema_down (&cur->sema_exit);
 }
 
 /* Sets up the CPU for running user code in the current
@@ -337,6 +335,7 @@ load (const struct arguments *args, void (**eip) (void), void **esp)
   process_activate ();
 
   /* Open executable file. */
+  lock_acquire(&filesys_lock);
   file = filesys_open (file_name);
 
   if (file == NULL) 
@@ -347,9 +346,7 @@ load (const struct arguments *args, void (**eip) (void), void **esp)
 
   /* Deny writes to open file */
   file_deny_write (file);
-  lock_acquire(&filesys_lock);
   int fd = assign_fd (file);
-  lock_release(&filesys_lock);
   if (fd == -1 ){
     goto done;
   }
@@ -427,6 +424,7 @@ load (const struct arguments *args, void (**eip) (void), void **esp)
         }
     }
 
+
   /* Set up stack. */
   if (!setup_stack (args, esp))
     goto done;
@@ -437,6 +435,7 @@ load (const struct arguments *args, void (**eip) (void), void **esp)
   success = true;
 
  done:
+  lock_release(&filesys_lock);
   /* We arrive here whether the load is successful or not. */
   if (!success) {
     lock_acquire(&filesys_lock);
@@ -444,6 +443,7 @@ load (const struct arguments *args, void (**eip) (void), void **esp)
     remove_fd (fd);
     lock_release(&filesys_lock);
   }
+
   return success;
 }
 

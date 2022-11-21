@@ -87,7 +87,12 @@ syscall_handler (struct intr_frame *f)
 {
   /* Call appropriate system call function from system calls array. */
   int syscall_num = *(int *) valid_pointer (f->esp);
-  syscall_handlers[syscall_num] (f);
+
+  if (syscall_num >= SYS_HALT && syscall_num <= SYS_MUNMAP) {
+    syscall_handlers[syscall_num] (f);
+  } else {
+    exit_with_code (-1);
+  } 
 }
 
 /* Returns true if the pointer is a valid user pointer */
@@ -411,7 +416,7 @@ syscall_read (struct intr_frame *f) {
   unsigned size = *(unsigned*) get_argument (f, 2);
   /* Ensure the entirety of buffer is valid */
   valid_pointer (buffer + size);
-  if (fd == 0) {
+  if (fd == STDIN_FILENO) {
     *(char*) buffer = input_getc();
     f->eax = 1;
   } else if (fd == 1) {
@@ -431,10 +436,11 @@ syscall_write (struct intr_frame *f) {
   int fd = *(int *) get_argument (f, 0);
   void *buffer = valid_pointer (*(void**) get_argument (f, 1));
   unsigned size = *(unsigned *) get_argument (f, 2);
+  
   /* Ensure the entirety of buffer is valid */
   valid_pointer (buffer + size);
 
-  if (fd == 1) {
+  if (fd == STDOUT_FILENO) {
     putbuf ((char *) buffer, size);
     f->eax = size;
   } else if (fd == 0) {
