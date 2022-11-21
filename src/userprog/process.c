@@ -21,6 +21,7 @@
 
 /* Passed argument struct */
 struct arguments {
+  char *fn_copy;
   int argc;
   char *argv[PGSIZE / 2];
 };
@@ -37,42 +38,40 @@ int count = 0;
 tid_t
 process_execute (const char *file_name) 
 {
-  char *fn_copy, fn_copy_begin;
+  char *fn_copy;
   tid_t tid;
   
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0);
   
-  fn_copy_begin = fn_copy;
   if (fn_copy == NULL)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
   /* Parse command line input into program name and arguments. */
   struct arguments *args;
-  args = palloc_get_page (PAL_USER |PAL_ZERO);
+  args = palloc_get_page (PAL_USER | PAL_ZERO);
   if (args == NULL) {
-    palloc_free_page (fn_copy_begin); 
+    palloc_free_page (fn_copy); 
     return TID_ERROR;
   }
+  args->fn_copy = fn_copy;
 
   char *arg_val, *s_ptr;
   int args_size = 0; /* Ensure arguments are not too large to be placed on the stack */
 
   for (arg_val = strtok_r (fn_copy, " ", &s_ptr); arg_val != NULL; arg_val = strtok_r (NULL, " ", &s_ptr)) {
+    /* Check arguments will fit on stack 
+     * 4 bytes are reserved for word-align, argv, argc, return address */
+    if ((args_size + strlen (arg_val) + 1) + 4 * (args->argc + 1) + 4 > PGSIZE) {
+      palloc_free_page (fn_copy);
+      palloc_free_page (args);
+      return TID_ERROR;
+    }
     args->argv[args->argc] = arg_val;
     args->argc++;
-    args_size += strlen (arg_val);
-  }
-
-  palloc_free_page (fn_copy_begin);
-
-  /* Check arguments will fit on stack 
-   * 4 bytes are reserved for word-align, argv, argc, return address */
-  if (args_size + args->argc + 4 > PGSIZE) {
-    printf ("Arguments are too large\n");
-    return TID_ERROR;
+    args_size += strlen (arg_val) + 1;
   }
 
   /* Create a new thread to execute FILE_NAME. */
@@ -82,7 +81,6 @@ process_execute (const char *file_name)
   if (tid != TID_ERROR) {
     /* Block parent until load is successful. */
     sema_down (&thread_current ()->sema_load);
-    palloc_free_page(fn_copy); //this one made multi-oom work, not freeing args
   }
 
   if (!thread_current ()->load_status) {
@@ -108,6 +106,7 @@ start_process (void *aux)
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (args, &if_.eip, &if_.esp);
 
+  palloc_free_page (args->fn_copy);
   palloc_free_page (args);
 
   struct thread *curr = thread_current ();
