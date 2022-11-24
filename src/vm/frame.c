@@ -3,7 +3,7 @@
 static struct hash *frame_table;
 static struct lock *frame_table_lock;
 
-void init_frame_table () {
+void init_frame_table (void) {
   frame_table = malloc (sizeof (struct hash));
   lock_init (&frame_table_lock);
   hash_init (frame_table, frame_hash, frame_less_func);

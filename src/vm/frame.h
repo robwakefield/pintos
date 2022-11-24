@@ -11,7 +11,8 @@
 
 struct frame_entry
 {
-    
+    void *frame_address;
+    struct thread *owner;
     struct hash_elem elem;
 };
 
