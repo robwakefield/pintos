@@ -4,8 +4,10 @@
 #include <debug.h>
 #include <hash.h>
 #include "threads/palloc.h"
+#include "threads/malloc.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "threads/thread.h"
 
 #define BUCKET_COUNT 16
 
@@ -16,11 +18,11 @@ struct frame_entry
     struct hash_elem elem;
 };
 
-void init_frame_table(void);
+void frame_table_init (void);
 
-unsigned frame_hash (struct hash_elem *h, void *aux UNUSED);
+unsigned frame_hash (const struct hash_elem *h, void *aux UNUSED);
 
-bool frame_less_func (struct hash_elem *e1, struct hash_elem *e2, void *aux UNUSED);
+bool frame_less_func (const struct hash_elem *e1, const struct hash_elem *e2, void *aux UNUSED);
 
 void *frame_alloc (enum palloc_flags flags);
 void frame_free (void *frame);

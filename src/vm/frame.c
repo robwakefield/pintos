@@ -1,25 +1,25 @@
 #include "frame.h"
 
 static struct hash *frame_table;
-static struct lock *frame_table_lock;
+static struct lock frame_table_lock;
 
-void init_frame_table (void) {
-  frame_table = malloc (sizeof (struct hash));
+void frame_table_init (void) {
   lock_init (&frame_table_lock);
-  hash_init (frame_table, frame_hash, frame_less_func);
+  frame_table = malloc (sizeof (struct hash));
+  hash_init (frame_table, frame_hash, frame_less_func, NULL);
 }
 
-unsigned frame_hash (struct hash_elem *e, void *aux UNUSED) {
+unsigned frame_hash (const struct hash_elem *e, void *aux UNUSED) {
   lock_acquire (&frame_table_lock);
   struct frame_entry *entry = hash_entry (e, struct frame_entry, elem);
   lock_release (&frame_table_lock);
-  return (entry->frame_address / PGSIZE) % BUCKET_COUNT;
+  return ((int) entry->frame_address / PGSIZE) % BUCKET_COUNT;
 }
 
-bool frame_less_func (struct hash_elem *e1, struct hash_elem *e2, void *aux UNUSED) {
+bool frame_less_func (const struct hash_elem *e1, const struct hash_elem *e2, void *aux UNUSED) {
   lock_acquire (&frame_table_lock);
-  struct hash_entry *a = hash_entry (e1, struct frame_entry, elem);
-  struct hash_entry *b = hash_entry (e2, struct frame_entry, elem);
+  struct frame_entry *a = hash_entry (e1, struct frame_entry, elem);
+  struct frame_entry *b = hash_entry (e2, struct frame_entry, elem);
   lock_release (&frame_table_lock);
   return a->frame_address < b->frame_address;
 }
@@ -32,9 +32,9 @@ struct frame_entry *create_entry (void *frame) {
 }
 
 struct hash_elem *search_elem (void *address) {
-  struct hash_elem *temp_elem;
-  temp_elem->frame_address = frame;
-  return temp_elem;
+  struct frame_entry *temp_entry;
+  temp_entry->frame_address = address;
+  return &temp_entry->elem;
 }
 
 void add_frame (void *frame) {
