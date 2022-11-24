@@ -3,6 +3,8 @@
 
 #include <hash.h>
 
+#define BUCKET_COUNT 16
+
 struct frame_entry
 {
     
