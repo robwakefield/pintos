@@ -27,7 +27,7 @@ struct frame_entry *create_entry (void *frame) {
   return f;
 }
 
-struct hash_entry *search_elem (void *address) {
+struct frame_entry *search_elem (void *address) {
   struct frame_entry *temp_entry;
   temp_entry = malloc (sizeof (struct frame_entry));
   temp_entry->frame_address = address;

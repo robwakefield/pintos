@@ -27,7 +27,7 @@ void *frame_alloc (enum palloc_flags flags);
 void frame_free (void *frame);
 
 struct frame_entry *create_entry (void *frame);
-struct hash_entry *search_elem (void *address);
+struct frame_entry *search_elem (void *address);
 void add_frame (void *frame);
 void remove_frame (void *frame);
 
