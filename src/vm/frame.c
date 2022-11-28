@@ -64,8 +64,11 @@ remove_frame (void *frame) {
   lock_acquire (&frame_table_lock);
 
   struct frame_entry *temp_entry = search_elem (frame);
-  hash_delete (frame_table, &temp_entry->elem);
+  struct hash_elem *removed = hash_delete (frame_table, &temp_entry->elem);
+  /* TODO: what if hash_delete returns a NULL pointer. */
 
+  /* Deallocate the frame table entry. */
+  free (hash_entry (removed, struct frame_entry, elem));
   free (temp_entry); 
   lock_release (&frame_table_lock);
 }
@@ -77,9 +80,9 @@ frame_alloc (enum palloc_flags flags) {
   if (f == NULL) {
     ASSERT(false);
   }
+
   add_frame (f);
   return f;
-
 }
 
 /* Frees all resources used by frame table entry
