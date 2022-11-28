@@ -157,26 +157,13 @@ page_fault (struct intr_frame *f)
           not_present ? "not present" : "rights violation",
           write ? "writing" : "reading",
           user ? "user" : "kernel");
-  // lookup faulting address in page table
-  uint32_t *pte = lookup_page (active_pd (), fault_addr, false);
-  if (pte == NULL) {
+  
+  void *kpage = pagedir_get_page (thread_current ()->pagedir, fault_addr);
+  if (kpage == NULL) {
+    // Actual Page Fault
     kill (f);
-  } else {
-    if ((*pte & PTE_P) == 0) {
-      // page exists but is unmapped
-      if ((*pte & PTE_S) != 0) {
-        // page is swapped
-        // swap page using PTE_ADDR
-      } else if ((*pte & PTE_L) == 0) {
-        // page is not loaded
-        // load_segment() using PTE_ADDR
-      } else {
-        PANIC ("PTE_P is 0 but page is loaded and not swapped!");
-      }
-    } else {
-      // page exists and is mapped
-        PANIC ("Page fault: page is mapped but still has page fault");
-    }
   }
+  // TODO: remove this once zero pages is implemented
+  kill (f);
 }
 
