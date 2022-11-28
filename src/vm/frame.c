@@ -53,8 +53,9 @@ add_frame (void *frame) {
 
   struct frame_entry *entry = create_entry (frame); 
   hash_insert (frame_table, &entry->elem);
-
+  
   lock_release (&frame_table_lock);
+
 }
 
 /* Removes given frame table entry from the frame table. */
@@ -64,23 +65,21 @@ remove_frame (void *frame) {
 
   struct frame_entry *temp_entry = search_elem (frame);
   hash_delete (frame_table, &temp_entry->elem);
-  palloc_free_page (frame->frame_address); // necessary??
-  free (temp_entry); 
 
+  free (temp_entry); 
   lock_release (&frame_table_lock);
 }
 
 /* Allocates a frame for the given page. */
 void *
 frame_alloc (enum palloc_flags flags) {
-  void *kpage = palloc_get_page (PAL_USER | flags);
-  if (kpage == NULL) {
-    PANIC ("Page eviction not implemented.");
-    /* TODO: evict page & palloc again */
+  void *f = palloc_get_page (PAL_USER | flags);
+  if (f == NULL) {
+    ASSERT(false);
   }
-
   add_frame (f);
   return f;
+
 }
 
 /* Frees all resources used by frame table entry
