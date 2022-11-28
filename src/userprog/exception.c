@@ -4,7 +4,9 @@
 #include "userprog/gdt.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "threads/pte.h"
 #include "userprog/syscall.h"
+#include "userprog/pagedir.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -155,6 +157,26 @@ page_fault (struct intr_frame *f)
           not_present ? "not present" : "rights violation",
           write ? "writing" : "reading",
           user ? "user" : "kernel");
-  kill (f);
+  // lookup faulting address in page table
+  uint32_t *pte = lookup_page (active_pd (), fault_addr, false);
+  if (pte == NULL) {
+    kill (f);
+  } else {
+    if ((*pte & PTE_P) == 0) {
+      // page exists but is unmapped
+      if ((*pte & PTE_S) != 0) {
+        // page is swapped
+        // swap page using PTE_ADDR
+      } else if ((*pte & PTE_L) == 0) {
+        // page is not loaded
+        // load_segment() using PTE_ADDR
+      } else {
+        PANIC ("PTE_P is 0 but page is loaded and not swapped!");
+      }
+    } else {
+      // page exists and is mapped
+        PANIC ("Page fault: page is mapped but still has page fault");
+    }
+  }
 }
 
