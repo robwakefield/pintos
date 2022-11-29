@@ -7,6 +7,7 @@
 #include "threads/pte.h"
 #include "userprog/syscall.h"
 #include "userprog/pagedir.h"
+#include "userprog/process.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -164,9 +165,7 @@ page_fault (struct intr_frame *f)
   printf ("phy=%p\n", PHYS_BASE);
   */
   if (fault_addr <= f->esp && fault_addr < PHYS_BASE && write) {
-    // Stack is growing
-    // (need to check if the page has been swapped out here)
-    if (!grow_stack ()) {    
+    if (!grow_stack ()) {
       kill (f);
     }
     return;
