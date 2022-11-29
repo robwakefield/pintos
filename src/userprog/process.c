@@ -594,6 +594,22 @@ setup_stack (const struct arguments *args, void **esp)
   return success;
 }
 
+bool
+grow_stack ()
+{
+  void *spage = frame_alloc (PAL_ZERO); // TODO: free this somewhere
+  if (spage == NULL) {
+    return false;
+  }
+
+  bool success = install_page (((uint8_t *) PHYS_BASE) - 2 * PGSIZE, spage, true);
+  if (!success) {
+    frame_free (spage);
+  }
+  return success;
+
+}
+
 static void *push_args_on_stack (const struct arguments *args) {
   void *esp = PHYS_BASE;
   char *arg_pointer[args->argc];
