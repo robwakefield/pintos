@@ -628,7 +628,7 @@ static void *push_args_on_stack (const struct arguments *args) {
   }
   
   /* Round esp down to multiple of 4 */
-  esp -= ((uint8_t) esp) % 4;
+  esp -= ((uint32_t) esp) % 4;
 
   /* Push address of each argument (RTL) */
   for (int i = args->argc; i >= 0; i--) {
@@ -637,8 +637,9 @@ static void *push_args_on_stack (const struct arguments *args) {
   }
   
   /* Push argv */
-  memcpy (esp - sizeof (char **), &esp, sizeof (char **));
-  esp -= sizeof(char **);
+  void *argv_p = esp;
+  esp -= sizeof (char **);
+  memcpy (esp, &argv_p, sizeof (char **));
   /* Push argc */
   esp -= sizeof (uint32_t);
   memcpy (esp, &args->argc, sizeof (uint32_t));
