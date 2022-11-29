@@ -594,6 +594,26 @@ setup_stack (const struct arguments *args, void **esp)
   return success;
 }
 
+bool
+grow_stack ()
+{
+  void *spage = frame_alloc (PAL_ZERO); // TODO: free this somewhere
+  if (spage == NULL) {
+    return false;
+  }
+
+  int n = 1;
+  do {  
+    n++;
+    if (n * PGSIZE > MAX_STACK_SIZE) { 
+      frame_free (spage);
+      return false;
+    }
+  } while (!install_page (((uint8_t *) PHYS_BASE) - n * PGSIZE, spage, true));
+  return true;
+
+}
+
 static void *push_args_on_stack (const struct arguments *args) {
   void *esp = PHYS_BASE;
   char *arg_pointer[args->argc];
@@ -608,7 +628,7 @@ static void *push_args_on_stack (const struct arguments *args) {
   }
   
   /* Round esp down to multiple of 4 */
-  esp -= ((uint8_t) esp) % 4;
+  esp -= ((uint32_t) esp) % 4;
 
   /* Push address of each argument (RTL) */
   for (int i = args->argc; i >= 0; i--) {
@@ -617,8 +637,9 @@ static void *push_args_on_stack (const struct arguments *args) {
   }
   
   /* Push argv */
-  memcpy (esp - sizeof (char **), &esp, sizeof (char **));
-  esp -= sizeof(char **);
+  void *argv_p = esp;
+  esp -= sizeof (char **);
+  memcpy (esp, &argv_p, sizeof (char **));
   /* Push argc */
   esp -= sizeof (uint32_t);
   memcpy (esp, &args->argc, sizeof (uint32_t));

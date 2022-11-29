@@ -127,13 +127,32 @@ pagedir_get_page (uint32_t *pd, const void *uaddr)
 {
   uint32_t *pte;
 
-  ASSERT (is_user_vaddr (uaddr));
+  if (!is_user_vaddr (uaddr)) {
+    return NULL;
+  }
   
   pte = lookup_page (pd, uaddr, false);
-  if (pte != NULL && (*pte & PTE_P) != 0)
-    return pte_get_page (*pte) + pg_ofs (uaddr);
-  else
+  if (pte != NULL) {
+    if ((*pte & PTE_P) != 0) {
+      return pte_get_page (*pte) + pg_ofs (uaddr);
+    } else if ((*pte & PTE_S != 0)) {
+      // page is swapped
+      // swap page back to memory? and return it
+      return NULL;
+    } else if ((*pte & PTE_L == 0)) {
+      // page isn't loaded
+      // load page using values in *pte and return it
+      return NULL;
+    } else if ((*pte & PTE_Z != 0)) {
+      // page is a zero page
+      // return pointer to zero page?
+      return NULL;
+    } else {
+      return NULL;
+    }
+  } else {
     return NULL;
+  }
 }
 
 /* Marks user virtual page UPAGE "not present" in page
