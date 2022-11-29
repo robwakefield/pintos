@@ -602,11 +602,15 @@ grow_stack ()
     return false;
   }
 
-  bool success = install_page (((uint8_t *) PHYS_BASE) - 2 * PGSIZE, spage, true);
-  if (!success) {
-    frame_free (spage);
-  }
-  return success;
+  int n = 1;
+  do {  
+    n++;
+    if (n * PGSIZE > MAX_STACK_SIZE) { 
+      frame_free (spage);
+      return false;
+    }
+  } while (!install_page (((uint8_t *) PHYS_BASE) - n * PGSIZE, spage, true));
+  return true;
 
 }
 

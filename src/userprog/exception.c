@@ -163,16 +163,13 @@ page_fault (struct intr_frame *f)
   printf ("fad=%p\n", fault_addr);
   printf ("phy=%p\n", PHYS_BASE);
   */
-  
-  if (fault_addr <= f->esp && fault_addr < PHYS_BASE) {
+  if (fault_addr <= f->esp && fault_addr < PHYS_BASE && write) {
     // Stack is growing
     // (need to check if the page has been swapped out here)
-    //printf ("growing the stack by %d\n", PHYS_BASE - f->esp);
-    if (!grow_stack()) {    
+    if (!grow_stack ()) {    
       kill (f);
     }
     return;
-    // TODO: Add PUSHA code
   }
   
   void *kpage = pagedir_get_page (thread_current ()->pagedir, fault_addr);
