@@ -78,7 +78,7 @@ void *
 frame_alloc (enum palloc_flags flags) {
   void *f = palloc_get_page (PAL_USER | flags);
   if (f == NULL) {
-    ASSERT(false);
+    return NULL;
   }
 
   add_frame (f);
