@@ -120,6 +120,8 @@ struct thread
 
 #endif
 
+	struct hash *page_table;                    /* Thread's supplemental page table. */
+
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
    };

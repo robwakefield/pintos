@@ -19,6 +19,7 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "vm/frame.h"
+#include "vm/page.h"
 
 /* Passed argument struct */
 struct arguments {
@@ -201,6 +202,9 @@ process_exit (void)
     sema_up(&temp->sema_exit);
   }
 
+  /* Destroy the page hash table. */
+  page_table_destroy ();
+
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -333,6 +337,13 @@ load (const struct arguments *args, void (**eip) (void), void **esp)
   if (t->pagedir == NULL) 
     goto done;
   process_activate ();
+
+  /* Create page hash table for current thread. */
+  t->page_table = malloc (sizeof (struct hash));
+  if (t->page_table == NULL) {
+    goto done;
+  }
+  hash_init (t->page_table, page_hash, page_less, NULL);
 
   /* Open executable file. */
   lock_acquire(&filesys_lock);
@@ -530,42 +541,25 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       /* Check if virtual page already allocated */
       struct thread *t = thread_current ();
       uint8_t *kpage = pagedir_get_page (t->pagedir, upage);
-      
-      if (kpage == NULL){
-        
-        /* Get a new page of memory. */
-        kpage = frame_alloc (0);
-        if (kpage == NULL){
-          return false;
-        }
-        
-        /* Add the page to the process's address space. */
-        if (!install_page (upage, kpage, writable)) 
-        {
-          frame_free (kpage);
 
-          return false; 
-        }     
-        
-      } else {
-        
-        /* Check if writable flag for the page should be updated */
-        if(writable && !pagedir_is_writable(t->pagedir, upage)){
-          pagedir_set_writable(t->pagedir, upage, writable); 
-        }
-        
+      struct page *p = page_alloc (upage, writable);
+
+      if (p == NULL) {
+        return false;
       }
 
-      /* Load data into the page. */
-      if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes){
-        return false; 
+      if (page_read_bytes > 0) {
+          p->file = file;
+          p->offset = ofs;
+          p->file_bytes = page_read_bytes;
       }
-      memset (kpage + page_read_bytes, 0, page_zero_bytes);
 
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
+      ofs += page_read_bytes;
       upage += PGSIZE;
+      
     }
   return true;
 }
