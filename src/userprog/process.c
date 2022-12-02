@@ -542,26 +542,44 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       struct thread *t = thread_current ();
       uint8_t *kpage = pagedir_get_page (t->pagedir, upage);
 
-      struct page *p = page_alloc (upage, writable);
+      if (kpage == NULL){
+        
+        /* Get a new page of memory. */
+        kpage = frame_alloc (0);
+        if (kpage == NULL){
+          return false;
+        }
+        
+        /* Add the page to the process's address space. */
+        if (!install_page (upage, kpage, writable)) 
+        {
+          frame_free (kpage);
 
-      if (p == NULL) {
-        return false;
+          return false; 
+        }     
+        
+      } else {
+        
+        /* Check if writable flag for the page should be updated */
+        if(writable && !pagedir_is_writable(t->pagedir, upage)){
+          pagedir_set_writable(t->pagedir, upage, writable); 
+        }
+        
       }
 
-      if (page_read_bytes > 0) {
-          p->file = file;
-          p->offset = ofs;
-          p->file_bytes = page_read_bytes;
+      /* Load data into the page. */
+      if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes){
+        return false; 
       }
+      memset (kpage + page_read_bytes, 0, page_zero_bytes);
 
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
-      ofs += page_read_bytes;
       upage += PGSIZE;
-      
     }
   return true;
+
 }
 
 /* Create a minimal stack by mapping a zeroed page at the top of

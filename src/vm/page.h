@@ -41,16 +41,7 @@ struct page
 unsigned page_hash (const struct hash_elem *e, void *aux UNUSED);
 bool page_less (const struct hash_elem *a, const struct hash_elem *b, void *aux UNUSED);
 
-struct page *page_by_addr (const void *addr);
-bool load_page (struct page *p);
-
+static void page_destroy (struct hash_elem *e, void *aux UNUSED);
 void page_table_destroy (void);
-
-struct page *page_alloc (void *, bool writable);
-void page_dealloc (void *vaddr);
-
-bool page_in (void *fault_addr);
-bool page_out (struct page *);
-bool page_accessed_recently (struct page *);
 
 #endif /* vm/page.h */
