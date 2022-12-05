@@ -13,9 +13,10 @@
 enum page_status
   {
     ALL_ZERO,       /* Zeroed page (new page). */
-    FRAME,          /* Frame allocated to page. */
+    IN_FRAME,          /* Frame allocated to page. */
     SWAPPED,        /* Page is swapped (in swap slot). */
-    FILE      
+    FILE,
+    MMAPPED     
   };
 
 /* Virtual page. */
@@ -23,25 +24,38 @@ struct page
   {
     void *addr;                 /* User virtual address. */
     bool writable;             /* Read-only page? */
+    bool dirty;
     struct thread *owner;      /* Owning thread. */
 
-    enum page_status status; 
+    enum page_status status;
 
     struct hash_elem hash_elem; 
 
     /* Set only in owning process context with frame->frame_lock held.
        Cleared only with scan_lock and frame->frame_lock held. */
-    struct frame_entry *frame;  /* Page frame. */
+    void *kpage;                /* */
 
     struct file *file;          /* File. */
     off_t offset;               /* Offset in file. */
-    off_t file_bytes;           /* Bytes to read/write, 1...PGSIZE. */
+    uint32_t read_bytes;           /* Bytes to read/write, 1...PGSIZE. */
+    uint32_t zero_bytes;           
   };
 
 unsigned page_hash (const struct hash_elem *e, void *aux UNUSED);
 bool page_less (const struct hash_elem *a, const struct hash_elem *b, void *aux UNUSED);
 
-static void page_destroy (struct hash_elem *e, void *aux UNUSED);
 void page_table_destroy (void);
+void page_dealloc (struct hash *pt, struct page *p);
+
+struct page * page_lookup (struct hash *pt, const void *addr);
+
+struct page * page_alloc_zeroed (struct hash *pt, void *vaddr);
+bool page_set_dirty (struct hash *pt, void *vaddr, bool dirty);
+
+bool page_alloc_with_file (struct hash *pt, void *upage, struct file *file, off_t offset, 
+                      uint32_t read_bytes, uint32_t zero_bytes, bool writable);
+bool page_install_frame (struct hash *pt, void *upage, void *kpage);
+
+bool load_file (void *kpage, struct page *p);
 
 #endif /* vm/page.h */

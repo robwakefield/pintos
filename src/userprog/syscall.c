@@ -88,6 +88,8 @@ syscall_handler (struct intr_frame *f)
   /* Call appropriate system call function from system calls array. */
   int syscall_num = *(int *) valid_pointer (f->esp);
 
+  thread_current ()->esp = f->esp;
+
   if (syscall_num >= SYS_HALT && syscall_num <= SYS_MUNMAP) {
     syscall_handlers[syscall_num] (f);
   } else {
@@ -148,7 +150,7 @@ void file_init(){
 }
 
 static struct fdPage *newFilePage(void){
-  struct fdPage *page = palloc_get_page(PAL_ZERO);
+  struct fdPage *page = frame_alloc (PAL_ZERO);
   if(&page->elem == NULL){
     return NULL;
   }
@@ -284,7 +286,7 @@ void freeTable(struct fdTable *table){
     }
     if(table->page->free == FD_NUM){
       list_remove(&table->page->elem);
-      palloc_free_page(table->page);
+      frame_free(table->page);
     }else{
       memset (table,0,sizeof(struct fdTable));
       cleanFileMemory(table);
