@@ -108,6 +108,8 @@ start_process (void *aux)
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (args, &if_.eip, &if_.esp);
 
+  printf (success ? "call to load () is successful\n" : "call to load() failed\n");
+
   frame_free (args->fn_copy);
   frame_free (args);
 
@@ -204,6 +206,7 @@ process_exit (void)
 
   /* Destroy the page hash table. */
   page_table_destroy ();
+  cur->page_table = NULL;
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -426,7 +429,7 @@ load (const struct arguments *args, void (**eip) (void), void **esp)
                   zero_bytes = ROUND_UP (page_offset + phdr.p_memsz, PGSIZE);
                 }
               if (!load_segment (file, file_page, (void *) mem_page,
-                                 read_bytes, zero_bytes, writable))
+                                 read_bytes, zero_bytes, writable))          
                 goto done;
             }
           else
@@ -529,6 +532,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
 
+  printf("Inside load_segment\n");
+
   file_seek (file, ofs);
   while (read_bytes > 0 || zero_bytes > 0) 
     {
@@ -537,31 +542,19 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
          and zero the final PAGE_ZERO_BYTES bytes. */
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
-      
-      /* Check if virtual page already allocated */
-      struct thread *t = thread_current ();
-      uint8_t *kpage = pagedir_get_page (t->pagedir, upage);
 
-      struct page *p = page_alloc (upage, writable);
-
-      if (p == NULL) {
-        return false;
-      }
-
-      if (page_read_bytes > 0) {
-          p->file = file;
-          p->offset = ofs;
-          p->file_bytes = page_read_bytes;
-      }
-
+      page_alloc_with_file (thread_current ()->page_table, upage, file, ofs, page_read_bytes, 
+                            page_zero_bytes, writable);
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
       ofs += page_read_bytes;
       upage += PGSIZE;
-      
     }
+
+  printf ("finished load_segment while loop\n");
   return true;
+
 }
 
 /* Create a minimal stack by mapping a zeroed page at the top of
@@ -585,7 +578,54 @@ setup_stack (const struct arguments *args, void **esp)
       }
       
     }
-  return success;
+  
+  // struct page *p = page_alloc_zeroed (thread_current ()->page_table, ((uint8_t *) PHYS_BASE) - PGSIZE);
+  // if (p == NULL)
+  // {
+  //   frame_free (kpage);
+  //   return false;
+  // }
+  // p->writable = true;
+  // p->status = IN_FRAME;
+  // p->kpage = kpage;
+
+  // if (hash_insert (thread_current ()->page_table, &p->hash_elem) != NULL) {
+  //   frame_free (kpage);
+  //   free (p);
+  // }
+
+  return true;
+}
+
+bool
+grow_stack (void *vaddr)
+{
+  printf("GROWING STACK\n");
+  struct thread *curr = thread_current ();
+
+  /* Grow stack. */
+  void *spage = frame_alloc (PAL_ZERO);
+  if (spage == NULL) {
+    return false;
+  }
+
+  struct page *p = page_alloc_zeroed (curr->page_table, vaddr);
+  if (p == NULL) {
+    frame_free (spage);
+    return false;
+  }
+  p->kpage = spage;
+  p->writable = true;
+  p->status = IN_FRAME;
+
+  if (!install_page (p->addr, spage, true)) {
+    frame_free (spage);
+    printf("cannot grow stack\n");
+    //page_dealloc (curr->page_table, p);
+    return false;
+  }
+
+  return true;
 }
 
 static void *push_args_on_stack (const struct arguments *args) {
@@ -602,7 +642,7 @@ static void *push_args_on_stack (const struct arguments *args) {
   }
   
   /* Round esp down to multiple of 4 */
-  esp -= ((uint8_t) esp) % 4;
+  esp -= ((uint32_t) esp) % 4;
 
   /* Push address of each argument (RTL) */
   for (int i = args->argc; i >= 0; i--) {
@@ -611,8 +651,9 @@ static void *push_args_on_stack (const struct arguments *args) {
   }
   
   /* Push argv */
-  memcpy (esp - sizeof (char **), &esp, sizeof (char **));
-  esp -= sizeof(char **);
+  void *argv_p = esp;
+  esp -= sizeof (char **);
+  memcpy (esp, &argv_p, sizeof (char **));
   /* Push argc */
   esp -= sizeof (uint32_t);
   memcpy (esp, &args->argc, sizeof (uint32_t));
@@ -640,4 +681,71 @@ install_page (void *upage, void *kpage, bool writable)
      address, then map our page there. */
   return (pagedir_get_page (t->pagedir, upage) == NULL
           && pagedir_set_page (t->pagedir, upage, kpage, writable));
+  // && page_install_frame (t->page_table, upage, kpage);
+}
+
+bool
+load_page(struct hash *pt, uint32_t *pagedir, struct page *p)
+{
+  if (p->status == IN_FRAME) {
+    /* Page is already loaded. */
+    printf ("p is loaded, free newly allocated frame\n");
+    return true;
+  }
+
+  // 2. Obtain a frame to store the page
+  void *kpage = frame_alloc (PAL_USER);
+  if (kpage == NULL) {
+    return false;
+  }
+
+  // 3. Fetch the data into the frame
+  bool writable = true;
+
+  switch (p->status)
+  {
+  case ALL_ZERO:
+    printf ("page case ALL_ZERO\n");
+    memset (kpage, 0, PGSIZE);
+    break;
+
+  case IN_FRAME:
+    /* nothing to do */
+    printf ("page case IN_FRAME\n");
+    break;
+
+  case SWAPPED:
+    // Swap in: load the data from the swap disc
+    printf ("page case SWAPPED\n");
+    break;
+
+  case FILE:
+    printf ("page case FILE\n");
+    if(!load_file (kpage, p)) {
+      frame_free (kpage);
+      return false;
+    }
+
+    writable = p->writable;
+    p->status = IN_FRAME;
+    break;
+
+  default:
+    //PANIC ("unreachable state");
+    ASSERT (false);
+  }
+
+  // 4. Point the page table entry for the faulting virtual address to the physical page.
+  if (!install_page (p->addr, kpage, writable)) {
+     frame_free (kpage);
+     return false;
+  }
+
+  // Make SURE to mapped kpage is stored in the SPTE.
+  p->kpage = kpage;
+  p->status = IN_FRAME;
+
+  pagedir_set_dirty (pagedir, kpage, false);
+
+  return true;
 }

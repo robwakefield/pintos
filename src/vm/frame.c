@@ -31,8 +31,10 @@ the process that owns the frame. */
 struct frame_entry *
 create_entry (void *frame) {
   struct frame_entry *f = malloc (sizeof (struct frame_entry));
+
   f->owner = thread_current ();
   f->frame_address = frame;
+  
   return f;
 }
 
@@ -67,28 +69,56 @@ remove_frame (void *frame) {
   struct hash_elem *removed = hash_delete (frame_table, &temp_entry->elem);
   /* TODO: what if hash_delete returns a NULL pointer. */
 
-  /* Deallocate the frame table entry. */
-  free (hash_entry (removed, struct frame_entry, elem));
   free (temp_entry); 
-  lock_release (&frame_table_lock);
+
+  if (removed != NULL) {
+    /* Deallocate the frame table entry. */
+    struct frame_entry *f = hash_entry (removed, struct frame_entry, elem);
+    free (f);
+    lock_release (&frame_table_lock);
+
+    palloc_free_page (pg_round_down (frame));
+  }
 }
 
 /* Allocates a frame for the given page. */
 void *
 frame_alloc (enum palloc_flags flags) {
-  void *f = palloc_get_page (PAL_USER | flags);
-  if (f == NULL) {
-    ASSERT(false);
+  lock_acquire(&frame_table_lock);
+
+  void *f_page = palloc_get_page (PAL_USER | flags);
+
+  if(f_page == NULL) {
+    // page allocation failed
+    // TODO: implement eviction
+    lock_release (&frame_table_lock);
+    return NULL;
   }
 
-  add_frame (f);
-  return f;
+  struct frame_entry *frame = malloc (sizeof (struct frame_entry));
+  if (frame == NULL) {
+    // frame allocation failed. a critical state or panic?
+    lock_release (&frame_table_lock);
+    return NULL;
+  }
+
+  frame->owner = thread_current ();
+  frame->frame_address = f_page;
+
+  // insert into hash table
+  if (hash_insert (frame_table, &frame->elem) != NULL) {
+    free (frame);
+    printf ("frame_alloc: frame already in frame table\n");
+  }
+
+  lock_release (&frame_table_lock);
+
+  return f_page;
 }
 
 /* Frees all resources used by frame table entry
 and removes entry from the frame table. */
 void
 frame_free (void *frame) {
-  palloc_free_page (frame);
   remove_frame (frame);
 }

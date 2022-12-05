@@ -8,11 +8,13 @@
 #include "userprog/pagedir.h"
 #include "devices/swap.h"
 
+static void page_destroy (struct hash_elem *e, void *aux UNUSED);
+
 unsigned
 page_hash (const struct hash_elem *e, void *aux UNUSED)
 {
   const struct page *p = hash_entry (e, struct page, hash_elem);
-  return hash_bytes (p->addr, sizeof (p->addr));
+  return hash_int ((int) p->addr);
 }
 
 /* Returns true if page a precedes page b. */
@@ -26,188 +28,222 @@ page_less (const struct hash_elem *fst, const struct hash_elem *snd,
   return a->addr < b->addr;
 }
 
-/* Adds a mapping for user virtual address VADDR to the page hash
-   table.  Fails if VADDR is already ped or if memory
-   allocation fails. */
-struct page *
-page_alloc (void *vaddr, bool writable)
-{
-  struct thread *t = thread_current ();
-  struct page *p = malloc (sizeof *p);
-
-  if (p != NULL) 
-    {
-      p->addr = pg_round_down (vaddr);
-
-      p->writable = writable;
-      p->frame = NULL;
-
-      p->file = NULL;
-      p->offset = 0;
-      p->file_bytes = 0;
-
-      p->owner = thread_current ();
-
-      if (hash_insert (t->page_table, &p->hash_elem) != NULL) 
-        {
-          /* Already mapped. */
-          free (p);
-          p = NULL;
-        }
-    }
-  return p;
-}
-
-/* Evicts the page containing address VADDR
-   and removes it from the page table. */
-// void
-// page_dealloc (void *vaddr) 
-// {
-//   struct page *p = (struct page *) page_by_addr (vaddr);
-//   ASSERT (p != NULL);
-
-//   /* TODO: Lock frame of page or page itself?*/
-//   //frame_lock (p);
-
-//   if (p->frame) {
-//       struct frame_entry *f = p->frame;
-//       if (p->file) {
-//         // page out
-//       }
-//       frame_free (f);
-//   }
-
-//   hash_delete (thread_current ()->page_table, &p->hash_elem);
-//   free (p);
-// }
-
 /* Destroys a page from the process's page table. */
 static void
 page_destroy (struct hash_elem *e, void *aux UNUSED)
 {
   struct page *p = hash_entry (e, struct page, hash_elem);
-  //frame_lock (p);
-  /* Lock frame or page? */
 
-  if (p->frame) {
-    frame_free (p->frame);
+  /* TODO: Lock frame or page? */
+  //struct thread *t = thread_current ();
+
+  if (p->kpage != NULL) {
+    ASSERT (p->status == IN_FRAME);
+    frame_free (p->kpage);
+
+    // void *kaddr = pagedir_get_page (t->pagedir, p->addr);
+    // frame_free (kaddr);
+    // pagedir_clear_page(t->pagedir, p->addr);
   }
 
   free (p);
 }
 
 /* Destroys the current process's page table. */
-void
-page_table_destroy (void) 
-{
-  struct hash *pt = thread_current ()->page_table;
+void 
+page_table_destroy (void)  {
+  struct hash *pt = thread_current()->page_table;
 
   if (pt != NULL) {
-    hash_destroy (pt, page_destroy);
+    hash_destroy(pt, page_destroy);
   }
 }
 
-/* Returns the page containing the given virtual address,
-   or a null pointer if there's no such page.*/
+void
+page_dealloc (struct hash *pt, struct page *p)
+{
+  void *kaddr;
+
+  if (hash_delete (pt, &p->hash_elem) != NULL)
+  {
+    if (p->kpage != NULL) {
+      frame_free (p->kpage);
+    }
+    if (pagedir_get_page (thread_current ()->pagedir, p->addr) != NULL) {
+      pagedir_clear_page (thread_current ()->pagedir, p->addr);
+    }  
+  }
+
+  free (p);
+}
+
 struct page *
-page_by_addr (const void *addr) 
+page_lookup (struct hash *pt, const void *addr)
 {
-  if (addr < PHYS_BASE) {
-    struct page p;
-    struct hash_elem *e;
+  printf ("inside hash_find\n");
+  struct page *temp = malloc (sizeof (struct page));
+  struct hash_elem *e;
 
-    /* Find existing page. */
-    p.addr = (void *) pg_round_down (addr);
-    e = hash_find (thread_current ()->page_table, &p.hash_elem);
-    if (e != NULL) {
-        return hash_entry (e, struct page, hash_elem);
-    }
+  temp->addr = pg_round_down (addr);
+  e = hash_find (pt, &temp->hash_elem);
+
+  if (e == NULL) {
+    printf ("hash_find returned null\n");
+  } else {
+    printf("hash found\n");
   }
 
-  return NULL;
+  free (temp);
+  return e != NULL ? hash_entry (e, struct page, hash_elem) : NULL;
 }
 
-/* Returns true if page has been accessed recently,
-   false otherwise.
-   P must have a frame locked into memory. */
-bool
-page_accessed_recently (struct page *p) 
-{
-  bool was_accessed;
+struct page *
+page_alloc_zeroed (struct hash *pt, void *vaddr) {
+  struct page *p = malloc (sizeof (struct page));
 
-  ASSERT (p->frame != NULL);
-  /* check if lock held by current thread? */
+  p->addr = vaddr;
+  p->kpage = NULL;
+  p->status = ALL_ZERO;
+  p->dirty = false;
+  p->kpage = NULL;
+  p->read_bytes = 0;
+  p->zero_bytes = PGSIZE;
+  p->writable = true;
+  p->owner = thread_current ();
 
-  was_accessed = pagedir_is_accessed (p->owner->pagedir, p->addr);
-  if (was_accessed) {
-    pagedir_set_accessed (p->owner->pagedir, p->addr, false);
-  }
+  hash_insert (pt, &p->hash_elem);
 
-  return was_accessed;
+  return p;
 }
 
 bool
-page_in (void *fault_addr) 
-{
-  struct page *p;
-  bool success;
-
-  if (thread_current ()->page_table == NULL){
-    return false;
-  }
-
-  p = page_by_addr (fault_addr);
+page_set_dirty (struct hash *pt, void *vaddr, bool dirty) {
+  struct page *p = page_lookup (pt, vaddr);
   if (p == NULL) {
-    return false; 
-  }
-
-  // TODO: revise
-  //frame_lock (p);
-
-  if (p->frame == NULL) {
-      if (!(load_page (p))) {
-        return false;
-      }
-  }
-
-  //ASSERT (lock_held_by_current_thread (&p->frame->lock));
-    
-  /* Install frame into page table. */
-  success = pagedir_set_page (thread_current ()->pagedir, p->addr,
-                              p->frame->frame_address, p->writable);
-
-  /* Release frame. */
-  //frame_unlock (p->frame);
-
-  return success;
-}
-
-/* Loads page in. Returns true if successful, false on failure. */
-bool
-load_page (struct page *p)
-{
-  /* Get a frame for the page. */
-  p->frame = frame_alloc (PAL_USER);
-  if (p->frame == NULL){
+    // PANIC ("in set dirty - page does not exist");
     return false;
   }
 
-  /* Copy data into the frame. */
-  if (p->file != NULL) 
-    {
-      /* Get data from file. */
-      size_t page_read_bytes = file_read_at (p->file, p->frame->frame_address,
-                                        p->file_bytes, p->offset);
-      size_t page_zero_bytes = PGSIZE - page_read_bytes;
-      memset (p->frame->frame_address+ page_read_bytes, 0, page_zero_bytes);
+  p->dirty = p->dirty || dirty;
+  return true;
+}
 
-      if (page_read_bytes != p->file_bytes)
-        printf ("bytes read %zu != bytes requested %zu\n",
-                page_read_bytes, p->file_bytes);
-    } else {
-      /* Page is ALL ZERO. */
-      memset (p->frame->frame_address, 0, PGSIZE);
-    }
+/* Creates a supplemental page table for a file page
+   Takes the user virtual address, file, file offset, whether it is writable,
+   the number of bytes to read and its page type 
+   Returns false if memory allocation fails or duplicate MMAP created */
+bool 
+page_alloc_with_file (struct hash *pt, void *upage, struct file *file, off_t offset, 
+                      uint32_t read_bytes, uint32_t zero_bytes, bool writable)
+{
+  /* Check if virtual page already allocated */
+  struct page *p = page_lookup(pt, upage);
+  
+  if (p != NULL) {
+    /* Update metadata if load_segment is loading same page twice */
+    //size_t new_read_bytes = p->read_bytes + read_bytes;
+    size_t new_read_bytes = p->read_bytes > read_bytes ? p->read_bytes : read_bytes;
+    printf ("page for file already in\n");
+
+    p->read_bytes = new_read_bytes;
+    p->zero_bytes = PGSIZE - new_read_bytes;
+    p->offset = offset;
+    
+    // if (new_read_bytes > PGSIZE) {
+    //   printf ("new read bytes is more than PGSIZE\n");
+    //   p->read_bytes = PGSIZE;
+    //   p->zero_bytes = 0;
+      
+    //   if (!page_alloc_with_file(pt, upage + PGSIZE, file, offset + PGSIZE,
+    //                             new_read_bytes - PGSIZE,  PGSIZE - (new_read_bytes - PGSIZE), writable))
+    //   {
+    //     printf ("page could not be allocated\n");
+    //     return false;
+    //   }
+    // } else {
+    //   p->read_bytes = new_read_bytes;
+    //   p->zero_bytes = PGSIZE - new_read_bytes;
+    // }
+    
+    p->writable = p->writable || writable;
+    p->owner = thread_current ();
+
+    // if (p->zero_bytes == PGSIZE) {
+    //     p->status = ALL_ZERO;
+    // }
+
+    return true;
+  }
+
+  /* Creates new table entry with given values if one cannot be found */
+  p = (struct page *) malloc (sizeof (struct page));
+  if (p == NULL) {
+    /* malloc failed */
+    return false;
+  }
+
+  p->file = file;
+  p->offset = offset;
+  p->read_bytes = read_bytes;
+  p->zero_bytes = zero_bytes;
+  p->kpage = NULL;
+  p->addr = upage;
+  p->owner = thread_current();
+  p->dirty = false;
+  p->writable = writable;
+  p->status = FILE;
+    
+  //hash_insert (pt, &p->hash_elem);
+  if (hash_insert (pt, &p->hash_elem) != NULL) {
+    printf ("inserting already existing page in alloc_file\n");
+    //frame_free (kpage);
+    free (p);
+  }
+
+  return true;
+}
+
+bool
+page_install_frame (struct hash *pt, void *upage, void *kpage)
+{
+
+  struct page *p = page_lookup (pt, upage);
+  if (p == NULL) {
+    printf ("installing frame for non-existing page\n");
+    return false;
+  }
+
+  p->addr = upage;
+  p->kpage = kpage;
+  p->status = IN_FRAME;
+  p->dirty = false;
+  p->owner = thread_current ();
+
+  // struct hash_elem *prev_elem;
+  // if (hash_insert (pt, &p->hash_elem) != NULL) {
+  //   //frame_free (kpage);
+  //   free (p);
+  // }
+  return true;
+}
+
+/* After allocate physical memory, load file to physical page from disk. */
+bool
+load_file (void *kpage, struct page *p)
+{
+  file_seek (p->file, p->offset);
+
+  /* Load data into the page. */
+  int read_bytes = file_read (p->file, kpage, p->read_bytes);
+  if (read_bytes != (int) p->read_bytes) {
+    printf ("load_file did not read enough bytes\n");
+    return false;
+  }
+  
+  ASSERT (p->read_bytes + p->zero_bytes == PGSIZE);
+  memset (kpage + read_bytes, 0, p->zero_bytes);
+
+  printf ("load_file is done\n");
 
   return true;
 }
