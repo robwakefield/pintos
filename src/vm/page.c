@@ -39,11 +39,8 @@ page_destroy (struct hash_elem *e, void *aux UNUSED)
 
   if (p->kpage != NULL) {
     ASSERT (p->status == IN_FRAME);
-    frame_free (p->kpage);
-
-    // void *kaddr = pagedir_get_page (t->pagedir, p->addr);
-    // frame_free (kaddr);
-    // pagedir_clear_page(t->pagedir, p->addr);
+    // TODO: make sure pages are getting freed
+    //frame_free (p->kpage);
   }
 
   free (p);
