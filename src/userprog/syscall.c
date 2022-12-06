@@ -1,6 +1,7 @@
 #include "userprog/syscall.h"
 #include <stdio.h>
 #include <syscall-nr.h>
+#include <string.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
@@ -17,6 +18,9 @@ static void syscall_handler (struct intr_frame *);
 static void (*syscall_handlers[20]) (struct intr_frame *);     /* Array of function pointers so syscall handlers. */
 void exit_with_code (int);
 static void *valid_pointer (void *);
+static struct list mmap_table;
+
+
 
 struct fdTable{
   int tid;
@@ -56,6 +60,8 @@ void syscall_write (struct intr_frame *);
 void syscall_seek (struct intr_frame *);
 void syscall_tell (struct intr_frame *);
 void syscall_close (struct intr_frame *);
+void syscall_mmap (struct intr_frame *);
+void syscall_munmap (struct intr_frame *);
 
 /* Lock for the file system, ensures multiple processes cannot edit file at the same time. */
 struct lock filesys_lock;
@@ -64,7 +70,7 @@ void
 syscall_init (void) 
 {
   lock_init (&filesys_lock);
-
+  list_init(&mmap_table);
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
   
   syscall_handlers[SYS_HALT] = &syscall_halt;
@@ -80,6 +86,8 @@ syscall_init (void)
   syscall_handlers[SYS_SEEK] = &syscall_seek;
   syscall_handlers[SYS_TELL] = &syscall_tell;
   syscall_handlers[SYS_CLOSE] = &syscall_close;
+  syscall_handlers[SYS_MMAP] = &syscall_mmap;
+  syscall_handlers[SYS_MUNMAP] = &syscall_munmap;
 }
 
 static void
@@ -501,3 +509,29 @@ syscall_close (struct intr_frame *f) {
     lock_release (&filesys_lock);
   }
 }
+
+//mapid_t mmap (int fd, void *addr)
+void syscall_mmap (struct intr_frame *f){
+  int fd = *(int*) get_argument (f, 0);
+  void *addr = valid_pointer (*(void**) get_argument (f, 1));
+  lock_acquire(&filesys_lock);
+  struct file *file = fd_to_file (fd); 
+  struct file *new_file = file_reopen(file);
+  f->eax = assign_fd(new_file);
+  lock_release(&filesys_lock);
+}
+
+//void munmap (mapid_t mapid)
+void syscall_munmap (struct intr_frame *f){
+  int mapid = *(int*) get_argument (f, 0);
+  lock_acquire(&filesys_lock);
+  struct file *file = fd_to_file (mapid);
+  file_close(file);
+  lock_release(&filesys_lock);
+}
+
+
+
+
+
+
