@@ -153,30 +153,29 @@ page_fault (struct intr_frame *f)
    write = (f->error_code & PF_W) != 0;
    user = (f->error_code & PF_U) != 0;
 
-  /*
+/*
   printf ("Page fault at %p: %s error %s page in %s context.\n",
             fault_addr,
             not_present ? "not present" : "rights violation",
             write ? "writing" : "reading",
             user ? "user" : "kernel");
-  */
+*/
    if (not_present) {
       struct page *p = page_lookup (curr->page_table, fault_addr);
 
       if (p != NULL) {
         if (! load_page (curr->page_table, curr->pagedir, p)) {
             goto PAGE_FAULT_VIOLATED_ACCESS;
-         }
+        }
+        return;
       }
 
-      if (fault_addr < PHYS_BASE && write && 
-         (f->esp <= fault_addr || fault_addr == f->esp - 4 || fault_addr == f->esp - 32)) {
-         if (! grow_stack (fault_addr)) {
-            goto PAGE_FAULT_VIOLATED_ACCESS;
-         }
+      if (fault_addr <= f->esp && fault_addr < PHYS_BASE && write) {
+        if (!grow_stack ()) {
+          goto PAGE_FAULT_VIOLATED_ACCESS;
+        }
+        return;
       }
-      return;
-
    }
 
 PAGE_FAULT_VIOLATED_ACCESS:

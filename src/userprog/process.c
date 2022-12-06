@@ -593,34 +593,23 @@ setup_stack (const struct arguments *args, void **esp)
 }
 
 bool
-grow_stack (void *vaddr)
+grow_stack () 
 {
-  printf("GROWING STACK\n");
-  struct thread *curr = thread_current ();
-
-  /* Grow stack. */
-  void *spage = frame_alloc (PAL_ZERO);
+  void *spage = frame_alloc (PAL_ZERO); // TODO: free this somewhere
   if (spage == NULL) {
     return false;
   }
 
-  struct page *p = page_alloc_zeroed (curr->page_table, vaddr);
-  if (p == NULL) {
-    frame_free (spage);
-    return false;
-  }
-  p->kpage = spage;
-  p->writable = true;
-  p->status = IN_FRAME;
-
-  if (!install_page (p->addr, spage, true)) {
-    frame_free (spage);
-    printf("cannot grow stack\n");
-    //page_dealloc (curr->page_table, p);
-    return false;
-  }
-
+  int n = 1;
+  do {
+    n++;
+    if (n * PGSIZE > MAX_STACK_SIZE) {
+      frame_free (spage);
+      return false;
+    }
+  } while (!install_page (((uint8_t *) PHYS_BASE) - n * PGSIZE, spage, true));
   return true;
+
 }
 
 static void *push_args_on_stack (const struct arguments *args) {
