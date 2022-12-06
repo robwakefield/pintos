@@ -109,8 +109,6 @@ start_process (void *aux)
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (args, &if_.eip, &if_.esp);
 
-  printf (success ? "call to load () is successful\n" : "call to load() failed\n");
-
   frame_free (args->fn_copy);
   frame_free (args);
 
@@ -205,9 +203,6 @@ process_exit (void)
     sema_up(&temp->sema_exit);
   }
 
-  /* Destroy the page hash table. */
-  page_table_destroy ();
-  cur->page_table = NULL;
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -225,6 +220,10 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
+
+  /* Destroy the page hash table. */
+  page_table_destroy ();
+  cur->page_table = NULL;
   
   sema_up (&cur->sema_wait);
 
@@ -533,8 +532,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
 
-  printf("Inside load_segment\n");
-
   file_seek (file, ofs);
   while (read_bytes > 0 || zero_bytes > 0) 
     {
@@ -553,7 +550,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       upage += PGSIZE;
     }
 
-  printf ("finished load_segment while loop\n");
   return true;
 
 }
@@ -599,33 +595,35 @@ setup_stack (const struct arguments *args, void **esp)
 }
 
 bool
-grow_stack (void *vaddr)
+grow_stack (void *vaddr) 
 {
-  printf("GROWING STACK\n");
-  struct thread *curr = thread_current ();
+  vaddr = pg_round_down (vaddr);
+  // TODO: ensure this is correct
+  if (vaddr < ((uint8_t *) PHYS_BASE) - MAX_STACK_SIZE) {
+    printf ("STACK IS TOO BIG!\n");
+  }
 
-  /* Grow stack. */
-  void *spage = frame_alloc (PAL_ZERO);
-  if (spage == NULL) {
+  void *kpage = frame_alloc (PAL_ZERO); // TODO: free this somewhere
+  if (kpage == NULL) {
+    printf ("Couldn't grow stack: eviction needs implementing\n");
     return false;
   }
 
-  struct page *p = page_alloc_zeroed (curr->page_table, vaddr);
+  struct page *p = page_alloc_zeroed (thread_current ()->page_table, vaddr);
   if (p == NULL) {
-    frame_free (spage);
+    frame_free (kpage);
     return false;
   }
-  p->kpage = spage;
+  p->kpage = kpage;
   p->writable = true;
   p->status = IN_FRAME;
 
-  if (!install_page (p->addr, spage, true)) {
-    frame_free (spage);
-    printf("cannot grow stack\n");
-    //page_dealloc (curr->page_table, p);
+  if (!install_page (p->addr, kpage, true)) {
+    frame_free (kpage);
+    frame_free (p);
+    printf ("Unable to grow stack!?\n");
     return false;
   }
-
   return true;
 }
 
@@ -711,8 +709,6 @@ load_page(struct hash *pt, uint32_t *pagedir, struct page *p)
     break;
 
   case IN_FRAME:
-    /* nothing to do */
-    printf ("page case IN_FRAME\n");
     break;
 
   case SWAPPED:
@@ -721,15 +717,7 @@ load_page(struct hash *pt, uint32_t *pagedir, struct page *p)
     break;
 
   case FILE:
-    printf ("page case FILE\n");
-    if(!load_file (kpage, p)) {
-      frame_free (kpage);
-      return false;
-    }
-
-    writable = p->writable;
-    p->status = IN_FRAME;
-    break;
+    return load_file_page (p);
 
   default:
     //PANIC ("unreachable state");
@@ -747,6 +735,44 @@ load_page(struct hash *pt, uint32_t *pagedir, struct page *p)
   p->status = IN_FRAME;
 
   pagedir_set_dirty (pagedir, kpage, false);
+
+  return true;
+}
+
+bool load_file_page (struct page *p) {
+  /* Check if virtual page already allocated */
+  struct thread *t = thread_current ();
+  uint8_t *kpage = pagedir_get_page (t->pagedir, p->addr);
+      
+  if (kpage == NULL){
+        
+    /* Get a new page of memory. */
+    kpage = palloc_get_page (PAL_USER);
+    if (kpage == NULL){
+      return false;
+    }
+      
+    /* Add the page to the process's address space. */
+    if (!install_page (p->addr, kpage, p->writable)) {
+      palloc_free_page (kpage);
+      return false; 
+    }     
+  } else {    
+    /* Check if writable flag for the page should be updated */
+    if(p->writable && !pagedir_is_writable(t->pagedir, p->addr)){
+      pagedir_set_writable(t->pagedir, p->addr, p->writable); 
+    }      
+  }
+
+  /* Load data into the page. */
+  if(!load_file (kpage, p)) {
+    frame_free (kpage);
+    return false;
+  }
+  p->kpage = kpage;
+  p->status = IN_FRAME;
+  // TODO: check if correct
+  pagedir_set_dirty (t->pagedir, kpage, false);
 
   return true;
 }

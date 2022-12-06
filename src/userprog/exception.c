@@ -9,8 +9,6 @@
 #include "userprog/pagedir.h"
 #include "userprog/process.h"
 
-#define MAX_STACK_SIZE 0x800000
-
 /* Number of page faults processed. */
 static long long page_fault_cnt;
 
@@ -141,7 +139,6 @@ page_fault (struct intr_frame *f)
    asm ("movl %%cr2, %0" : "=r" (fault_addr));
 
    struct thread *curr = thread_current ();
-   //void *esp = user ? f->esp : curr->esp;
 
    /* Turn interrupts back on (they were only off so that we could
       be assured of reading CR2 before it changed). */
@@ -154,27 +151,36 @@ page_fault (struct intr_frame *f)
    not_present = (f->error_code & PF_P) == 0;
    write = (f->error_code & PF_W) != 0;
    user = (f->error_code & PF_U) != 0;
-
-   printf("inside page fault\n");
-
+/*
+   printf ("Page fault at %p: %s error %s page in %s context.\n",
+            fault_addr,
+            not_present ? "not present" : "rights violation",
+            write ? "writing" : "reading",
+            user ? "user" : "kernel");
+*/
    if (not_present) {
-      struct page *p = page_lookup (curr->page_table, fault_addr);
-      printf ("page looked up\n");
+    struct page *p = page_lookup (curr->page_table, fault_addr);
 
-      if (p != NULL) {
-         if (! load_page (curr->page_table, curr->pagedir, p)) {
+    if (p != NULL) {
+      if (!load_page (curr->page_table, curr->pagedir, p)) {
             goto PAGE_FAULT_VIOLATED_ACCESS;
-         }
       }
-
-      if (fault_addr < PHYS_BASE && write && 
-         (f->esp <= fault_addr || fault_addr == f->esp - 4 || fault_addr == f->esp - 32)) {
-         if (! grow_stack (fault_addr)) {
-            goto PAGE_FAULT_VIOLATED_ACCESS;
-         }
+      return;
+    }
+      
+    if ((fault_addr + 32 == f->esp || fault_addr + 4 == f->esp || fault_addr >= f->esp) && fault_addr < PHYS_BASE && write) {
+      if (!grow_stack (fault_addr)) {
+        goto PAGE_FAULT_VIOLATED_ACCESS;
       }
+      return;
+    }
+  }
 
-   }
+  if ((int*) fault_addr != 0xffffffff && !user) {
+    f->eip = (void*) f->eax;
+    f->eax = 0xffffffff;
+    return;
+  }
 
 PAGE_FAULT_VIOLATED_ACCESS:
    printf ("Page fault at %p: %s error %s page in %s context.\n",

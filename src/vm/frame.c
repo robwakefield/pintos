@@ -1,4 +1,5 @@
 #include "frame.h"
+#include <stdio.h>
 
 static struct hash *frame_table;
 static struct lock frame_table_lock;
@@ -67,18 +68,16 @@ remove_frame (void *frame) {
 
   struct frame_entry *temp_entry = search_elem (frame);
   struct hash_elem *removed = hash_delete (frame_table, &temp_entry->elem);
-  /* TODO: what if hash_delete returns a NULL pointer. */
-
   free (temp_entry); 
 
+  // TODO: check this
   if (removed != NULL) {
     /* Deallocate the frame table entry. */
     struct frame_entry *f = hash_entry (removed, struct frame_entry, elem);
     free (f);
-    lock_release (&frame_table_lock);
-
     palloc_free_page (pg_round_down (frame));
   }
+  lock_release (&frame_table_lock);
 }
 
 /* Allocates a frame for the given page. */
@@ -107,8 +106,8 @@ frame_alloc (enum palloc_flags flags) {
 
   // insert into hash table
   if (hash_insert (frame_table, &frame->elem) != NULL) {
-    free (frame);
-    printf ("frame_alloc: frame already in frame table\n");
+    //free (frame);
+    // TODO: behaviour? free frame or overwrite
   }
 
   lock_release (&frame_table_lock);
