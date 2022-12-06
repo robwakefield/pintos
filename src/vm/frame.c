@@ -106,8 +106,8 @@ frame_alloc (enum palloc_flags flags) {
 
   // insert into hash table
   if (hash_insert (frame_table, &frame->elem) != NULL) {
-    free (frame);
-    printf ("frame_alloc: frame already in frame table\n");
+    //free (frame);
+    // TODO: behaviour? free frame or overwrite
   }
 
   lock_release (&frame_table_lock);
