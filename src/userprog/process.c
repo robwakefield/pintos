@@ -202,9 +202,6 @@ process_exit (void)
     sema_up(&temp->sema_exit);
   }
 
-  /* Destroy the page hash table. */
-  page_table_destroy ();
-  cur->page_table = NULL;
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -222,6 +219,10 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
+
+  /* Destroy the page hash table. */
+  page_table_destroy ();
+  cur->page_table = NULL;
   
   sema_up (&cur->sema_wait);
 
@@ -593,23 +594,36 @@ setup_stack (const struct arguments *args, void **esp)
 }
 
 bool
-grow_stack () 
+grow_stack (void *vaddr) 
 {
-  void *spage = frame_alloc (PAL_ZERO); // TODO: free this somewhere
-  if (spage == NULL) {
+  vaddr = pg_round_down (vaddr);
+  // TODO: ensure this is correct
+  if (vaddr < ((uint8_t *) PHYS_BASE) - MAX_STACK_SIZE) {
+    printf ("STACK IS TOO BIG!\n");
+  }
+
+  void *kpage = frame_alloc (PAL_ZERO); // TODO: free this somewhere
+  if (kpage == NULL) {
+    printf ("Couldn't grow stack: eviction needs implementing\n");
     return false;
   }
 
-  int n = 1;
-  do {
-    n++;
-    if (n * PGSIZE > MAX_STACK_SIZE) {
-      frame_free (spage);
-      return false;
-    }
-  } while (!install_page (((uint8_t *) PHYS_BASE) - n * PGSIZE, spage, true));
-  return true;
+  struct page *p = page_alloc_zeroed (thread_current ()->page_table, vaddr);
+  if (p == NULL) {
+    frame_free (kpage);
+    return false;
+  }
+  p->kpage = kpage;
+  p->writable = true;
+  p->status = IN_FRAME;
 
+  if (!install_page (p->addr, kpage, true)) {
+    frame_free (kpage);
+    frame_free (p);
+    printf ("Unable to grow stack!?\n");
+    return false;
+  }
+  return true;
 }
 
 static void *push_args_on_stack (const struct arguments *args) {
