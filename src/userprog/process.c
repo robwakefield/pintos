@@ -20,6 +20,7 @@
 #include "threads/vaddr.h"
 #include "vm/frame.h"
 #include "vm/page.h"
+#include "userprog/fdTable.h"
 
 /* Passed argument struct */
 struct arguments {
@@ -192,7 +193,7 @@ process_exit (void)
   uint32_t *pd;
 
   lock_acquire(&filesys_lock);
-  closeProcess(thread_current());
+  close_process(thread_current()->tid);
   lock_release(&filesys_lock);
 
   /* Once process exits, stop all children threads waiting blocked on sema_exit. */
