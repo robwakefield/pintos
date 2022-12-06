@@ -108,8 +108,6 @@ start_process (void *aux)
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (args, &if_.eip, &if_.esp);
 
-  printf (success ? "call to load () is successful\n" : "call to load() failed\n");
-
   frame_free (args->fn_copy);
   frame_free (args);
 
@@ -532,8 +530,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
 
-  printf("Inside load_segment\n");
-
   file_seek (file, ofs);
   while (read_bytes > 0 || zero_bytes > 0) 
     {
@@ -552,7 +548,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       upage += PGSIZE;
     }
 
-  printf ("finished load_segment while loop\n");
   return true;
 
 }
@@ -710,8 +705,6 @@ load_page(struct hash *pt, uint32_t *pagedir, struct page *p)
     break;
 
   case IN_FRAME:
-    /* nothing to do */
-    printf ("page case IN_FRAME\n");
     break;
 
   case SWAPPED:
@@ -720,15 +713,7 @@ load_page(struct hash *pt, uint32_t *pagedir, struct page *p)
     break;
 
   case FILE:
-    printf ("page case FILE\n");
-    if(!load_file (kpage, p)) {
-      frame_free (kpage);
-      return false;
-    }
-
-    writable = p->writable;
-    p->status = IN_FRAME;
-    break;
+    return load_file_page (p);
 
   default:
     //PANIC ("unreachable state");
@@ -746,6 +731,44 @@ load_page(struct hash *pt, uint32_t *pagedir, struct page *p)
   p->status = IN_FRAME;
 
   pagedir_set_dirty (pagedir, kpage, false);
+
+  return true;
+}
+
+bool load_file_page (struct page *p) {
+  /* Check if virtual page already allocated */
+  struct thread *t = thread_current ();
+  uint8_t *kpage = pagedir_get_page (t->pagedir, p->addr);
+      
+  if (kpage == NULL){
+        
+    /* Get a new page of memory. */
+    kpage = palloc_get_page (PAL_USER);
+    if (kpage == NULL){
+      return false;
+    }
+      
+    /* Add the page to the process's address space. */
+    if (!install_page (p->addr, kpage, p->writable)) {
+      palloc_free_page (kpage);
+      return false; 
+    }     
+  } else {    
+    /* Check if writable flag for the page should be updated */
+    if(p->writable && !pagedir_is_writable(t->pagedir, p->addr)){
+      pagedir_set_writable(t->pagedir, p->addr, p->writable); 
+    }      
+  }
+
+  /* Load data into the page. */
+  if(!load_file (kpage, p)) {
+    frame_free (kpage);
+    return false;
+  }
+  p->kpage = kpage;
+  p->status = IN_FRAME;
+  // TODO: check if correct
+  pagedir_set_dirty (t->pagedir, kpage, false);
 
   return true;
 }

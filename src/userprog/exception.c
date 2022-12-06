@@ -9,8 +9,6 @@
 #include "userprog/pagedir.h"
 #include "userprog/process.h"
 
-#define MAX_STACK_SIZE 0x800000
-
 /* Number of page faults processed. */
 static long long page_fault_cnt;
 
@@ -155,14 +153,18 @@ page_fault (struct intr_frame *f)
    write = (f->error_code & PF_W) != 0;
    user = (f->error_code & PF_U) != 0;
 
-   printf("inside page fault\n");
-
+  /*
+  printf ("Page fault at %p: %s error %s page in %s context.\n",
+            fault_addr,
+            not_present ? "not present" : "rights violation",
+            write ? "writing" : "reading",
+            user ? "user" : "kernel");
+  */
    if (not_present) {
       struct page *p = page_lookup (curr->page_table, fault_addr);
-      printf ("page looked up\n");
 
       if (p != NULL) {
-         if (! load_page (curr->page_table, curr->pagedir, p)) {
+        if (! load_page (curr->page_table, curr->pagedir, p)) {
             goto PAGE_FAULT_VIOLATED_ACCESS;
          }
       }
@@ -173,6 +175,7 @@ page_fault (struct intr_frame *f)
             goto PAGE_FAULT_VIOLATED_ACCESS;
          }
       }
+      return;
 
    }
 
