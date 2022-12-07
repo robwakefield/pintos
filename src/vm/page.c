@@ -39,11 +39,8 @@ page_destroy (struct hash_elem *e, void *aux UNUSED)
 
   if (p->kpage != NULL) {
     ASSERT (p->status == IN_FRAME);
-    frame_free (p->kpage);
-
-    // void *kaddr = pagedir_get_page (t->pagedir, p->addr);
-    // frame_free (kaddr);
-    // pagedir_clear_page(t->pagedir, p->addr);
+    // TODO: make sure pages are getting freed
+    //frame_free (p->kpage);
   }
 
   free (p);
@@ -80,7 +77,6 @@ page_dealloc (struct hash *pt, struct page *p)
 struct page *
 page_lookup (struct hash *pt, const void *addr)
 {
-  printf ("inside hash_find\n");
   struct page *temp = malloc (sizeof (struct page));
   struct hash_elem *e;
 
@@ -88,9 +84,9 @@ page_lookup (struct hash *pt, const void *addr)
   e = hash_find (pt, &temp->hash_elem);
 
   if (e == NULL) {
-    printf ("hash_find returned null\n");
+    //printf ("ERROR: hash_find returned null -> page is not in page table\n");
   } else {
-    printf("hash found\n");
+    //printf("(page)hash found in page table\n");
   }
 
   free (temp);
@@ -141,36 +137,14 @@ page_alloc_with_file (struct hash *pt, void *upage, struct file *file, off_t off
   
   if (p != NULL) {
     /* Update metadata if load_segment is loading same page twice */
-    //size_t new_read_bytes = p->read_bytes + read_bytes;
+    printf("loading same page twice\n");
     size_t new_read_bytes = p->read_bytes > read_bytes ? p->read_bytes : read_bytes;
-    printf ("page for file already in\n");
 
     p->read_bytes = new_read_bytes;
     p->zero_bytes = PGSIZE - new_read_bytes;
     p->offset = offset;
-    
-    // if (new_read_bytes > PGSIZE) {
-    //   printf ("new read bytes is more than PGSIZE\n");
-    //   p->read_bytes = PGSIZE;
-    //   p->zero_bytes = 0;
-      
-    //   if (!page_alloc_with_file(pt, upage + PGSIZE, file, offset + PGSIZE,
-    //                             new_read_bytes - PGSIZE,  PGSIZE - (new_read_bytes - PGSIZE), writable))
-    //   {
-    //     printf ("page could not be allocated\n");
-    //     return false;
-    //   }
-    // } else {
-    //   p->read_bytes = new_read_bytes;
-    //   p->zero_bytes = PGSIZE - new_read_bytes;
-    // }
-    
     p->writable = p->writable || writable;
     p->owner = thread_current ();
-
-    // if (p->zero_bytes == PGSIZE) {
-    //     p->status = ALL_ZERO;
-    // }
 
     return true;
   }
@@ -193,10 +167,8 @@ page_alloc_with_file (struct hash *pt, void *upage, struct file *file, off_t off
   p->writable = writable;
   p->status = FILE;
     
-  //hash_insert (pt, &p->hash_elem);
   if (hash_insert (pt, &p->hash_elem) != NULL) {
     printf ("inserting already existing page in alloc_file\n");
-    //frame_free (kpage);
     free (p);
   }
 
@@ -234,16 +206,13 @@ load_file (void *kpage, struct page *p)
   file_seek (p->file, p->offset);
 
   /* Load data into the page. */
-  int read_bytes = file_read (p->file, kpage, p->read_bytes);
-  if (read_bytes != (int) p->read_bytes) {
+  if (file_read (p->file, kpage, p->read_bytes) != (int) p->read_bytes) {
     printf ("load_file did not read enough bytes\n");
     return false;
   }
   
   ASSERT (p->read_bytes + p->zero_bytes == PGSIZE);
-  memset (kpage + read_bytes, 0, p->zero_bytes);
-
-  printf ("load_file is done\n");
+  memset (kpage + p->read_bytes, 0, p->zero_bytes);
 
   return true;
 }
