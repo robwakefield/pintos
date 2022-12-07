@@ -55,7 +55,7 @@ add_frame (void *frame) {
   lock_acquire (&frame_table_lock);
 
   struct frame_entry *entry = create_entry (frame); 
-  hash_insert (frame_table, &entry->elem);
+  ASSERT (hash_insert (frame_table, &entry->elem) == NULL);
   
   lock_release (&frame_table_lock);
 
@@ -95,20 +95,16 @@ frame_alloc (enum palloc_flags flags) {
   }
 
   struct frame_entry *frame = malloc (sizeof (struct frame_entry));
-  if (frame == NULL) {
-    // frame allocation failed. a critical state or panic?
-    lock_release (&frame_table_lock);
-    return NULL;
-  }
+  ASSERT (frame != NULL);
+  // if (frame == NULL) {
+  //   lock_release (&frame_table_lock);
+  //   return NULL;
+  // }
 
   frame->owner = thread_current ();
   frame->frame_address = f_page;
 
-  // insert into hash table
-  if (hash_insert (frame_table, &frame->elem) != NULL) {
-    //free (frame);
-    // TODO: behaviour? free frame or overwrite
-  }
+  ASSERT (hash_insert (frame_table, &frame->elem) == NULL);
 
   lock_release (&frame_table_lock);
 

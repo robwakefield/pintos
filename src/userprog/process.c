@@ -21,6 +21,7 @@
 #include "vm/frame.h"
 #include "vm/page.h"
 #include "userprog/fdTable.h"
+#include "userprog/syscall.h"
 
 /* Passed argument struct */
 struct arguments {
@@ -692,13 +693,13 @@ load_page(struct hash *pt, uint32_t *pagedir, struct page *p)
     return true;
   }
 
-  // 2. Obtain a frame to store the page
+  /* Obtain a frame to store the page. */
   void *kpage = frame_alloc (PAL_USER);
   if (kpage == NULL) {
     return false;
   }
 
-  // 3. Fetch the data into the frame
+  /* Load page data into the frame. */
   bool writable = true;
 
   switch (p->status)
@@ -712,25 +713,24 @@ load_page(struct hash *pt, uint32_t *pagedir, struct page *p)
     break;
 
   case SWAPPED:
-    // Swap in: load the data from the swap disc
+    /* Swap in: load the data from the swap disc. */
     printf ("page case SWAPPED\n");
     break;
 
   case FILE:
-    return load_file_page (p);
+    return load_file_page (p, kpage);
 
   default:
-    //PANIC ("unreachable state");
     ASSERT (false);
   }
 
-  // 4. Point the page table entry for the faulting virtual address to the physical page.
+  /* Point the page table entry for the faulting virtual address to the physical page. */
   if (!install_page (p->addr, kpage, writable)) {
      frame_free (kpage);
      return false;
   }
 
-  // Make SURE to mapped kpage is stored in the SPTE.
+  /* Set SPTE data to point to the allocated kpage. */
   p->kpage = kpage;
   p->status = IN_FRAME;
 
@@ -739,24 +739,21 @@ load_page(struct hash *pt, uint32_t *pagedir, struct page *p)
   return true;
 }
 
-bool load_file_page (struct page *p) {
+bool load_file_page (struct page *p, void *kpage) {
+
+  ASSERT (kpage != NULL);
+
   /* Check if virtual page already allocated */
   struct thread *t = thread_current ();
-  uint8_t *kpage = pagedir_get_page (t->pagedir, p->addr);
+  uint8_t *frame = pagedir_get_page (t->pagedir, p->addr);
       
-  if (kpage == NULL){
-        
-    /* Get a new page of memory. */
-    kpage = palloc_get_page (PAL_USER);
-    if (kpage == NULL){
-      return false;
-    }
-      
+  if (frame == NULL){
     /* Add the page to the process's address space. */
     if (!install_page (p->addr, kpage, p->writable)) {
-      palloc_free_page (kpage);
+      frame_free (kpage);
       return false; 
     }     
+
   } else {    
     /* Check if writable flag for the page should be updated */
     if(p->writable && !pagedir_is_writable(t->pagedir, p->addr)){
@@ -769,8 +766,10 @@ bool load_file_page (struct page *p) {
     frame_free (kpage);
     return false;
   }
+
   p->kpage = kpage;
   p->status = IN_FRAME;
+
   // TODO: check if correct
   pagedir_set_dirty (t->pagedir, kpage, false);
 

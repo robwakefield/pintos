@@ -42,10 +42,6 @@ void syscall_close (struct intr_frame *);
 void syscall_mmap (struct intr_frame *f);
 void syscall_munmap (struct intr_frame *f);
 
-
-/* Lock for the file system, ensures multiple processes cannot edit file at the same time. */
-struct lock filesys_lock;
-
 void
 syscall_init (void) 
 {
@@ -319,29 +315,33 @@ syscall_close (struct intr_frame *f) {
   }
 }
 
-
-//mapid_t mmap (int fd, void *addr)
 void syscall_mmap (struct intr_frame *f){
   
   int fd = *(int*) get_argument (f, 0);
-  void *addr = valid_pointer (*(void**) get_argument (f, 1));
+  // unused variable
+  //void *addr = valid_pointer (*(void**) get_argument (f, 1), f, 0);
   lock_acquire(&filesys_lock);
   struct file *file = fd_to_file (fd); 
+
   if (file == NULL){
     f->eax =  -1;
+    lock_release (&filesys_lock);
     return;
   }
+
   struct file *new_file = file_reopen(file);
   if (new_file == NULL){
     f->eax =  -1;
+    lock_release (&filesys_lock);
     return;
   }
+
   int size = file_length(new_file);
   void *buffer = palloc_get_multiple(PAL_USER,(size/PGSIZE) + 1);
-  if(buffer == NULL){
+  if (buffer == NULL) {
     f->eax = -1;
     file_close(new_file);
-  }else{
+  } else {
     f->eax = assign_fd(new_file);
   }
 
@@ -349,7 +349,6 @@ void syscall_mmap (struct intr_frame *f){
   
 }
 
-//void munmap (mapid_t mapid)
 void syscall_munmap (struct intr_frame *f){
   int mapid = *(int*) get_argument (f, 0);
   lock_acquire(&filesys_lock);

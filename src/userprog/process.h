@@ -12,6 +12,6 @@ void process_exit (void);
 void process_activate (void);
 bool grow_stack (void *vaddr);
 bool load_page(struct hash *pt, uint32_t *pagedir, struct page *p);
-bool load_file_page (struct page *p);
+bool load_file_page (struct page *p, void *kpage);
 
 #endif /* userprog/process.h */

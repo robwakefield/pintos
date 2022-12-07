@@ -1,3 +1,6 @@
+#ifndef USERPROG_FDTABLE_H
+#define USERPROG_FDTABLE_H
+
 #define FD_SIZE 8
 
 struct fdTable{
@@ -15,3 +18,5 @@ struct file* fd_to_file(int);
 int assign_fd (struct file *);
 void remove_fd (int);
 void close_process (int);
+
+#endif /* userprog/fdTable.h */

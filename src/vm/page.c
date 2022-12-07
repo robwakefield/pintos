@@ -7,6 +7,7 @@
 #include "threads/malloc.h"
 #include "userprog/pagedir.h"
 #include "devices/swap.h"
+#include "userprog/syscall.h"
 
 static void page_destroy (struct hash_elem *e, void *aux UNUSED);
 
@@ -59,7 +60,6 @@ page_table_destroy (void)  {
 void
 page_dealloc (struct hash *pt, struct page *p)
 {
-  void *kaddr;
 
   if (hash_delete (pt, &p->hash_elem) != NULL)
   {
@@ -107,7 +107,7 @@ page_alloc_zeroed (struct hash *pt, void *vaddr) {
   p->writable = true;
   p->owner = thread_current ();
 
-  hash_insert (pt, &p->hash_elem);
+  ASSERT (hash_insert (pt, &p->hash_elem) == NULL);
 
   return p;
 }
@@ -116,7 +116,6 @@ bool
 page_set_dirty (struct hash *pt, void *vaddr, bool dirty) {
   struct page *p = page_lookup (pt, vaddr);
   if (p == NULL) {
-    // PANIC ("in set dirty - page does not exist");
     return false;
   }
 
@@ -171,6 +170,8 @@ page_alloc_with_file (struct hash *pt, void *upage, struct file *file, off_t off
     printf ("inserting already existing page in alloc_file\n");
     free (p);
   }
+  // replace with:
+  // ASSERT (hash_insert (pt, &p->hash_elem) == NULL);
 
   return true;
 }
@@ -191,11 +192,6 @@ page_install_frame (struct hash *pt, void *upage, void *kpage)
   p->dirty = false;
   p->owner = thread_current ();
 
-  // struct hash_elem *prev_elem;
-  // if (hash_insert (pt, &p->hash_elem) != NULL) {
-  //   //frame_free (kpage);
-  //   free (p);
-  // }
   return true;
 }
 
@@ -203,16 +199,19 @@ page_install_frame (struct hash *pt, void *upage, void *kpage)
 bool
 load_file (void *kpage, struct page *p)
 {
+  lock_acquire (&filesys_lock);
   file_seek (p->file, p->offset);
 
   /* Load data into the page. */
   if (file_read (p->file, kpage, p->read_bytes) != (int) p->read_bytes) {
     printf ("load_file did not read enough bytes\n");
+    lock_release (&filesys_lock);
     return false;
   }
   
   ASSERT (p->read_bytes + p->zero_bytes == PGSIZE);
   memset (kpage + p->read_bytes, 0, p->zero_bytes);
 
+  lock_release (&filesys_lock);
   return true;
 }
