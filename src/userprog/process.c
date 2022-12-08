@@ -679,7 +679,6 @@ install_page (void *upage, void *kpage, bool writable)
      address, then map our page there. */
   return (pagedir_get_page (t->pagedir, upage) == NULL
           && pagedir_set_page (t->pagedir, upage, kpage, writable));
-  // && page_install_frame (t->page_table, upage, kpage);
 }
 
 bool
@@ -716,7 +715,11 @@ load_page(struct hash *pt, uint32_t *pagedir, struct page *p)
     break;
 
   case FILE:
-    return load_file_page (p);
+    if (!file_share_page (p)) {
+      return load_file_page (p);
+    } else {
+      PANIC ("PAGE SHARED");
+    }
 
   default:
     //PANIC ("unreachable state");
@@ -736,6 +739,38 @@ load_page(struct hash *pt, uint32_t *pagedir, struct page *p)
   pagedir_set_dirty (pagedir, kpage, false);
 
   return true;
+}
+
+bool file_share_page (struct page *p) {
+  if (p->kpage != NULL) {
+    return false;
+  }
+  // search page table for page pointing to same file 
+  struct hash *pt = thread_current ()->page_table;
+  struct page *temp = malloc (sizeof (struct page));
+  struct hash_elem *e;
+  temp->file = p->file;
+  temp->offset = p->offset;
+  e = hash_find (pt, &temp->hash_elem);
+  free (temp);
+  if (e == NULL) {
+    /* No corresponding file in pt to share with */
+    return false;
+  }
+  struct page *s = hash_entry (e, struct page, hash_elem);
+  if (s == NULL) {
+    return false;
+  }
+  page_install_frame (pt, p->addr, s->kpage);
+  if (s->status == IN_FRAME) {
+    return true;
+  } else {
+    p->status = s->status;
+    // SWAP (p)
+    printf ("SHARED PAGE IS NOT IN FRAME\n");
+    return true;
+  }
+
 }
 
 bool load_file_page (struct page *p) {
