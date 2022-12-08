@@ -338,6 +338,7 @@ void syscall_mmap (struct intr_frame *f){
 
   int size = file_length(new_file);
   void *buffer = palloc_get_multiple(PAL_USER,(size/PGSIZE) + 1);
+  
   if (buffer == NULL) {
     f->eax = -1;
     file_close(new_file);

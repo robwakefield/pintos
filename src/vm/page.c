@@ -36,12 +36,12 @@ page_destroy (struct hash_elem *e, void *aux UNUSED)
   struct page *p = hash_entry (e, struct page, hash_elem);
 
   /* TODO: Lock frame or page? */
-  //struct thread *t = thread_current ();
 
-  if (p->kpage != NULL) {
-    ASSERT (p->status == IN_FRAME);
-    // TODO: make sure pages are getting freed
-    //frame_free (p->kpage);
+  if (p->status == IN_FRAME) {
+    ASSERT (p->kpage != NULL);
+    frame_free (p->kpage);
+  } else if (p->status == SWAPPED){
+    //TODO: swap_drop
   }
 
   free (p);
@@ -136,7 +136,7 @@ page_alloc_with_file (struct hash *pt, void *upage, struct file *file, off_t off
   
   if (p != NULL) {
     /* Update metadata if load_segment is loading same page twice */
-    printf("loading same page twice\n");
+    //printf("loading same page twice\n");
     size_t new_read_bytes = p->read_bytes > read_bytes ? p->read_bytes : read_bytes;
 
     p->read_bytes = new_read_bytes;

@@ -47,7 +47,7 @@ process_execute (const char *file_name)
   
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
-  fn_copy = frame_alloc (0);
+  fn_copy = frame_alloc (0, NULL);
   
   if (fn_copy == NULL)
     return TID_ERROR;
@@ -55,7 +55,7 @@ process_execute (const char *file_name)
 
   /* Parse command line input into program name and arguments. */
   struct arguments *args;
-  args = frame_alloc (PAL_ZERO);
+  args = frame_alloc (PAL_ZERO, NULL);
   if (args == NULL) {
     frame_free (fn_copy);
     return TID_ERROR;
@@ -563,7 +563,7 @@ setup_stack (const struct arguments *args, void **esp)
   uint8_t *kpage;
   bool success = false;
 
-  kpage = frame_alloc (PAL_ZERO);
+  kpage = frame_alloc (PAL_ZERO, ((uint8_t *) PHYS_BASE) - PGSIZE);
 
   if (kpage != NULL) 
     {
@@ -604,7 +604,7 @@ grow_stack (void *vaddr)
     printf ("STACK IS TOO BIG!\n");
   }
 
-  void *kpage = frame_alloc (PAL_ZERO); // TODO: free this somewhere
+  void *kpage = frame_alloc (PAL_ZERO, vaddr); // TODO: free this somewhere
   if (kpage == NULL) {
     printf ("Couldn't grow stack: eviction needs implementing\n");
     return false;
@@ -684,66 +684,11 @@ install_page (void *upage, void *kpage, bool writable)
   // && page_install_frame (t->page_table, upage, kpage);
 }
 
-bool
-load_page(struct hash *pt, uint32_t *pagedir, struct page *p)
-{
-  if (p->status == IN_FRAME) {
-    /* Page is already loaded. */
-    printf ("p is loaded, free newly allocated frame\n");
-    return true;
-  }
-
-  /* Obtain a frame to store the page. */
-  void *kpage = frame_alloc (PAL_USER);
-  if (kpage == NULL) {
-    return false;
-  }
-
-  /* Load page data into the frame. */
-  bool writable = true;
-
-  switch (p->status)
-  {
-  case ALL_ZERO:
-    printf ("page case ALL_ZERO\n");
-    memset (kpage, 0, PGSIZE);
-    break;
-
-  case IN_FRAME:
-    break;
-
-  case SWAPPED:
-    /* Swap in: load the data from the swap disc. */
-    printf ("page case SWAPPED\n");
-    break;
-
-  case FILE:
-    return load_file_page (p, kpage);
-
-  default:
-    ASSERT (false);
-  }
-
-  /* Point the page table entry for the faulting virtual address to the physical page. */
-  if (!install_page (p->addr, kpage, writable)) {
-     frame_free (kpage);
-     return false;
-  }
-
-  /* Set SPTE data to point to the allocated kpage. */
-  p->kpage = kpage;
-  p->status = IN_FRAME;
-
-  pagedir_set_dirty (pagedir, kpage, false);
-
-  return true;
-}
-
 bool load_file_page (struct page *p, void *kpage) {
 
   ASSERT (kpage != NULL);
 
-  /* Check if virtual page already allocated */
+  /* Check if virtual page already allocated. */
   struct thread *t = thread_current ();
   uint8_t *frame = pagedir_get_page (t->pagedir, p->addr);
       
@@ -772,6 +717,68 @@ bool load_file_page (struct page *p, void *kpage) {
 
   // TODO: check if correct
   pagedir_set_dirty (t->pagedir, kpage, false);
+
+  return true;
+}
+
+bool
+load_page(struct hash *pt, uint32_t *pagedir, struct page *p)
+{
+  if (p->status == IN_FRAME) {
+    /* Page is already loaded. */
+    printf ("p is loaded, free newly allocated frame\n");
+    return true;
+  }
+
+  /* Obtain a frame to store the page. */
+  void *kpage = frame_alloc (PAL_USER, p->addr);
+  if (kpage == NULL) {
+    return false;
+  }
+
+  /* Load page data into the frame. */
+  bool writable = true;
+
+  switch (p->status)
+  {
+  case ALL_ZERO:
+    /* Zeroed out page. */
+    printf ("page case ALL_ZERO\n");
+    memset (kpage, 0, PGSIZE);
+    break;
+
+  case IN_FRAME:
+    /* Page already loaded to frame, nothing more to do. */
+    /* TODO: return false or true? */
+    break;
+
+  case SWAPPED:
+    /* Swap in: load the data from the swap disc. */
+    printf ("page case SWAPPED\n");
+    swap_in (kpage, p->swap_slot);
+    p->status = IN_FRAME;
+    break;
+
+  case FILE:
+    /* Load page from file into allocated frame. */
+    return load_file_page (p, kpage);
+
+  default:
+    ASSERT (false);
+  }
+
+  /* Point the page table entry for the faulting virtual address to the physical page. */
+  if (!install_page (p->addr, kpage, writable)) {
+     frame_free (kpage);
+     return false;
+  }
+
+  /* Set SPTE data to point to the allocated kpage. */
+  p->kpage = kpage;
+  p->status = IN_FRAME;
+  
+  frame_set_pinned (kpage, false);
+  pagedir_set_dirty (pagedir, kpage, false);
 
   return true;
 }
