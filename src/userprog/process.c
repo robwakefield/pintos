@@ -57,7 +57,7 @@ process_execute (const char *file_name)
   struct arguments *args;
   args = frame_alloc (PAL_ZERO, NULL);
   if (args == NULL) {
-    frame_free (fn_copy);
+    frame_free (fn_copy, true);
     return TID_ERROR;
   }
   args->fn_copy = fn_copy;
@@ -69,8 +69,8 @@ process_execute (const char *file_name)
     /* Check arguments will fit on stack 
      * 4 bytes are reserved for word-align, argv, argc, return address */
     if ((args_size + strlen (arg_val) + 1) + 4 * (args->argc + 1) + 4 > PGSIZE) {
-      frame_free (fn_copy);
-      frame_free (args);
+      frame_free (fn_copy, true);
+      frame_free (args, true);
       return TID_ERROR;
     }
     args->argv[args->argc] = arg_val;
@@ -110,8 +110,8 @@ start_process (void *aux)
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (args, &if_.eip, &if_.esp);
 
-  frame_free (args->fn_copy);
-  frame_free (args);
+  frame_free (args->fn_copy, true);
+  frame_free (args, true);
 
   struct thread *curr = thread_current ();
 
@@ -571,7 +571,7 @@ setup_stack (const struct arguments *args, void **esp)
       if (success) {
         *esp = push_args_on_stack (args);
       } else {
-        frame_free (kpage);
+        frame_free (kpage, true);
 
       }
       
@@ -612,7 +612,7 @@ grow_stack (void *vaddr)
 
   struct page *p = page_alloc_zeroed (thread_current ()->page_table, vaddr);
   if (p == NULL) {
-    frame_free (kpage);
+    frame_free (kpage, true);
     return false;
   }
   p->kpage = kpage;
@@ -620,8 +620,8 @@ grow_stack (void *vaddr)
   p->status = IN_FRAME;
 
   if (!install_page (p->addr, kpage, true)) {
-    frame_free (kpage);
-    frame_free (p);
+    frame_free (kpage, true);
+    free (p);
     printf ("Unable to grow stack!?\n");
     return false;
   }
@@ -695,7 +695,7 @@ bool load_file_page (struct page *p, void *kpage) {
   if (frame == NULL){
     /* Add the page to the process's address space. */
     if (!install_page (p->addr, kpage, p->writable)) {
-      frame_free (kpage);
+      frame_free (kpage, true);
       return false; 
     }     
 
@@ -708,13 +708,14 @@ bool load_file_page (struct page *p, void *kpage) {
 
   /* Load data into the page. */
   if(!load_file (kpage, p)) {
-    frame_free (kpage);
+    frame_free (kpage, true);
     return false;
   }
 
   p->kpage = kpage;
   p->status = IN_FRAME;
 
+  frame_set_pinned(kpage, false);
   // TODO: check if correct
   pagedir_set_dirty (t->pagedir, kpage, false);
 
@@ -726,7 +727,6 @@ load_page(struct hash *pt, uint32_t *pagedir, struct page *p)
 {
   if (p->status == IN_FRAME) {
     /* Page is already loaded. */
-    printf ("p is loaded, free newly allocated frame\n");
     return true;
   }
 
@@ -743,7 +743,7 @@ load_page(struct hash *pt, uint32_t *pagedir, struct page *p)
   {
   case ALL_ZERO:
     /* Zeroed out page. */
-    printf ("page case ALL_ZERO\n");
+    //printf ("page case ALL_ZERO\n");
     memset (kpage, 0, PGSIZE);
     break;
 
@@ -754,7 +754,8 @@ load_page(struct hash *pt, uint32_t *pagedir, struct page *p)
 
   case SWAPPED:
     /* Swap in: load the data from the swap disc. */
-    printf ("page case SWAPPED\n");
+    //printf ("page case SWAPPED\n");
+    ASSERT (p->swap_slot != -1);
     swap_in (kpage, p->swap_slot);
     p->status = IN_FRAME;
     break;
@@ -769,7 +770,7 @@ load_page(struct hash *pt, uint32_t *pagedir, struct page *p)
 
   /* Point the page table entry for the faulting virtual address to the physical page. */
   if (!install_page (p->addr, kpage, writable)) {
-     frame_free (kpage);
+     frame_free (kpage, true);
      return false;
   }
 

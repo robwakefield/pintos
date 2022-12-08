@@ -62,35 +62,31 @@ search_elem (void *address) {
   return temp_entry;
 }
 
-/* Adds a given frame table entry to the frame table. */
-void
-add_frame (void *frame) {
-  lock_acquire (&frame_table_lock);
-
-  struct frame_entry *entry = create_entry (frame); 
-  ASSERT (hash_insert (frame_table, &entry->hash_elem) == NULL);
-  
-  lock_release (&frame_table_lock);
-
-}
-
 /* Frees all resources used by frame table entry
 and removes entry from the frame table. */
 void
-frame_free (void *frame) {
+frame_free (void *frame, bool free_page) {
+  ASSERT (is_kernel_vaddr (frame));
+  ASSERT (pg_ofs (frame) == 0);
+  
   lock_acquire (&frame_table_lock);
 
   struct frame_entry *temp_entry = search_elem (frame);
-  struct hash_elem *removed = hash_delete (frame_table, &temp_entry->hash_elem);
+  struct hash_elem *to_remove = hash_find (frame_table, &temp_entry->hash_elem);
   free (temp_entry); 
 
+  ASSERT (to_remove != NULL);
+
   // TODO: check this
-  if (removed != NULL) {
+  if (to_remove != NULL) {
     /* Deallocate the frame table entry. */
-    struct frame_entry *f = hash_entry (removed, struct frame_entry, hash_elem);
+    struct frame_entry *f = hash_entry (to_remove, struct frame_entry, hash_elem);
+    hash_delete (frame_table, &f->hash_elem);
+    if (free_page) {
+       palloc_free_page (frame);
+    }
     free (f);
-    palloc_free_page (pg_round_down (frame));
-  }
+  } 
   lock_release (&frame_table_lock);
 }
 
@@ -99,8 +95,6 @@ void *
 frame_alloc (enum palloc_flags flags, void *upage) {
   bool evicted = false;
 
-  lock_acquire(&frame_table_lock);
-
   void *f_page = palloc_get_page (PAL_USER | flags);
 
   if(f_page == NULL) {
@@ -108,11 +102,12 @@ frame_alloc (enum palloc_flags flags, void *upage) {
     struct frame_entry *frame;
 
     while (!evicted) {
+      ASSERT (clock_ptr != NULL);
       frame = list_entry (clock_ptr, struct frame_entry, list_elem);
 
       if (frame->pinned) {
         /* Frame is pinned, cannot evict. Move on to next frame. */
-        clock_hand_move (clock_ptr);
+        clock_hand_move ();
         continue;
       } 
   
@@ -120,6 +115,7 @@ frame_alloc (enum palloc_flags flags, void *upage) {
         /* Referenced bit set -> give second chance and move clock pointer. */
         pagedir_set_accessed (frame->owner->pagedir, frame->upage, false);
         pagedir_set_accessed (frame->owner->pagedir, frame->frame_address, false);
+        clock_hand_move ();
       
       } else {
         /* Referenced bit not set -> evict page. */
@@ -133,26 +129,32 @@ frame_alloc (enum palloc_flags flags, void *upage) {
         pagedir_clear_page (frame->owner->pagedir, p->addr);
 
         /* Remove frame. */
-        frame_free (frame);
-        list_remove (clock_ptr);
+        clock_hand_move ();
+        frame_free (frame->frame_address, true);
 
         evicted = true;
       }
 
-      clock_hand_move (clock_ptr);
       // reset_hand_move (resetting_ptr);
     }
 
     /* Allocate after page eviction -> should succeed in this chance. */
     f_page = palloc_get_page (PAL_USER | flags);
-    ASSERT (fpage != NULL);;
+    ASSERT (f_page != NULL);;
   }
 
+  lock_acquire(&frame_table_lock);
+
   struct frame_entry *new_frame = malloc (sizeof (struct frame_entry));
-  ASSERT (frame != NULL);
+  ASSERT (new_frame != NULL);
 
   lock_acquire (&frame_list_lock);
-  list_insert (clock_ptr, &new_frame->list_elem);
+  if (evicted) {
+    list_insert (clock_ptr, &new_frame->list_elem);
+  } else {
+    list_push_back (&frame_list, &new_frame->list_elem);
+    clock_hand_move ();
+  }
   lock_release (&frame_list_lock);
 
   // move clock hand?
@@ -177,20 +179,22 @@ frame_alloc (enum palloc_flags flags, void *upage) {
     }
   }
 
+  ASSERT (hash_insert (frame_table, &new_frame->hash_elem) == NULL);
+
   lock_release (&frame_table_lock);
 
   return f_page;
 }
 
 void
-clock_hand_move (struct list_elem *ptr)
+clock_hand_move ()
 {
   ASSERT (!list_empty(&frame_list));
 
-  if (ptr == NULL || ptr == list_end (&frame_list)) {
-    ptr = list_begin (&frame_list);
+  if (clock_ptr == NULL || clock_ptr == list_end (&frame_list)) {
+    clock_ptr = list_begin (&frame_list);
   } else {
-    ptr = list_next (ptr);
+    clock_ptr = list_next (clock_ptr);
   }
 }
 
@@ -203,7 +207,7 @@ reset_hand_move (void)
   struct frame_entry *frame = list_entry (clock_ptr, struct frame_entry, list_elem);
   pagedir_set_accessed (frame->owner->pagedir, frame->upage, false);
 
-  clock_hand_move (resetting_ptr);
+  //clock_hand_move (resetting_ptr);
 }
 
 void
@@ -212,15 +216,17 @@ frame_set_pinned (void *kpage, bool pinned)
   lock_acquire (&frame_table_lock);
 
   // hash lookup : a temporary entry
-  struct frame_entry f_tmp;
-  f_tmp.kpage = kpage;
-  struct hash_elem *h = hash_find (&frame_table, &(f_tmp.hash_elem));
+  struct frame_entry *temp = search_elem (kpage);
+  struct hash_elem *h = hash_find (frame_table, &temp->hash_elem);
+  free (temp);
+
   if (h == NULL) {
     printf ("The frame to be pinned/unpinned does not exist\n");
   }
 
   struct frame_entry *f;
   f = hash_entry(h, struct frame_entry, hash_elem);
+
   f->pinned = pinned;
 
   lock_release (&frame_table_lock);

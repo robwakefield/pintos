@@ -29,14 +29,13 @@ unsigned frame_hash (const struct hash_elem *h, void *aux UNUSED);
 bool frame_less_func (const struct hash_elem *e1, const struct hash_elem *e2, void *aux UNUSED);
 
 void *frame_alloc (enum palloc_flags flags, void *upage);
-void frame_free (void *frame);
+void frame_free (void *frame, bool free_page);
 
 struct frame_entry *create_entry (void *frame);
 struct frame_entry *search_elem (void *address);
-void add_frame (void *frame);
 void remove_frame (void *frame);
 
-void clock_hand_move (struct list_elem *ptr);
+void clock_hand_move (void);
 void reset_hand_move (void);
 
 void frame_set_pinned (void *kpage, bool pinned);

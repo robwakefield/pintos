@@ -39,9 +39,11 @@ page_destroy (struct hash_elem *e, void *aux UNUSED)
 
   if (p->status == IN_FRAME) {
     ASSERT (p->kpage != NULL);
-    frame_free (p->kpage);
+    frame_free (p->kpage, false);
   } else if (p->status == SWAPPED){
     //TODO: swap_drop
+    ASSERT (p->swap_slot != -1);
+    swap_drop(p->swap_slot);
   }
 
   free (p);
@@ -64,7 +66,7 @@ page_dealloc (struct hash *pt, struct page *p)
   if (hash_delete (pt, &p->hash_elem) != NULL)
   {
     if (p->kpage != NULL) {
-      frame_free (p->kpage);
+      frame_free (p->kpage, true);
     }
     if (pagedir_get_page (thread_current ()->pagedir, p->addr) != NULL) {
       pagedir_clear_page (thread_current ()->pagedir, p->addr);
