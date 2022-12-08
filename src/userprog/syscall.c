@@ -318,8 +318,7 @@ syscall_close (struct intr_frame *f) {
 void syscall_mmap (struct intr_frame *f){
   
   int fd = *(int*) get_argument (f, 0);
-  // unused variable
-  //void *addr = valid_pointer (*(void**) get_argument (f, 1), f, 0);
+  void *addr = valid_pointer (*(void**) get_argument (f, 1), f, 0);
   lock_acquire(&filesys_lock);
   struct file *file = fd_to_file (fd); 
 
