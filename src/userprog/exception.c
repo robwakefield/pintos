@@ -4,7 +4,10 @@
 #include "userprog/gdt.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "threads/pte.h"
 #include "userprog/syscall.h"
+#include "userprog/pagedir.h"
+#include "userprog/process.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -121,40 +124,70 @@ kill (struct intr_frame *f)
 static void
 page_fault (struct intr_frame *f) 
 {
-  bool not_present;  /* True: not-present page, false: writing r/o page. */
-  bool write;        /* True: access was write, false: access was read. */
-  bool user;         /* True: access by user, false: access by kernel. */
-  void *fault_addr;  /* Fault address. */
+   bool not_present;  /* True: not-present page, false: writing r/o page. */
+   bool write;        /* True: access was write, false: access was read. */
+   bool user;         /* True: access by user, false: access by kernel. */
+   void *fault_addr;  /* Fault address. */
 
-  /* Obtain faulting address, the virtual address that was
-     accessed to cause the fault.  It may point to code or to
-     data.  It is not necessarily the address of the instruction
-     that caused the fault (that's f->eip).
-     See [IA32-v2a] "MOV--Move to/from Control Registers" and
-     [IA32-v3a] 5.15 "Interrupt 14--Page Fault Exception
-     (#PF)". */
-  asm ("movl %%cr2, %0" : "=r" (fault_addr));
+   /* Obtain faulting address, the virtual address that was
+      accessed to cause the fault.  It may point to code or to
+      data.  It is not necessarily the address of the instruction
+      that caused the fault (that's f->eip).
+      See [IA32-v2a] "MOV--Move to/from Control Registers" and
+      [IA32-v3a] 5.15 "Interrupt 14--Page Fault Exception
+      (#PF)". */
+   asm ("movl %%cr2, %0" : "=r" (fault_addr));
 
-  /* Turn interrupts back on (they were only off so that we could
-     be assured of reading CR2 before it changed). */
-  intr_enable ();
+   struct thread *curr = thread_current ();
 
-  /* Count page faults. */
-  page_fault_cnt++;
+   /* Turn interrupts back on (they were only off so that we could
+      be assured of reading CR2 before it changed). */
+   intr_enable ();
 
-  /* Determine cause. */
-  not_present = (f->error_code & PF_P) == 0;
-  write = (f->error_code & PF_W) != 0;
-  user = (f->error_code & PF_U) != 0;
+   /* Count page faults. */
+   page_fault_cnt++;
 
-  /* To implement virtual memory, delete the rest of the function
-     body, and replace it with code that brings in the page to
-     which fault_addr refers. */
-  printf ("Page fault at %p: %s error %s page in %s context.\n",
-          fault_addr,
-          not_present ? "not present" : "rights violation",
-          write ? "writing" : "reading",
-          user ? "user" : "kernel");
-  kill (f);
+   /* Determine cause. */
+   not_present = (f->error_code & PF_P) == 0;
+   write = (f->error_code & PF_W) != 0;
+   user = (f->error_code & PF_U) != 0;
+/*
+   printf ("Page fault at %p: %s error %s page in %s context.\n",
+            fault_addr,
+            not_present ? "not present" : "rights violation",
+            write ? "writing" : "reading",
+            user ? "user" : "kernel");
+*/
+   if (not_present) {
+    struct page *p = page_lookup (curr->page_table, fault_addr);
+
+    if (p != NULL) {
+      if (!load_page (curr->page_table, curr->pagedir, p)) {
+            goto PAGE_FAULT_VIOLATED_ACCESS;
+      }
+      return;
+    }
+      
+    if ((fault_addr + 32 == f->esp || fault_addr + 4 == f->esp || fault_addr >= f->esp) && fault_addr < PHYS_BASE && write) {
+      if (!grow_stack (fault_addr)) {
+        goto PAGE_FAULT_VIOLATED_ACCESS;
+      }
+      return;
+    }
+  }
+
+  if ((int*) fault_addr != 0xffffffff && !user) {
+    f->eip = (void*) f->eax;
+    f->eax = 0xffffffff;
+    return;
+  }
+
+PAGE_FAULT_VIOLATED_ACCESS:
+   printf ("Page fault at %p: %s error %s page in %s context.\n",
+                     fault_addr,
+                     not_present ? "not present" : "rights violation",
+                     write ? "writing" : "reading",
+                     user ? "user" : "kernel");
+   kill (f);
+
 }
-
