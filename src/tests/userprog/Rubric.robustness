@@ -31,14 +31,13 @@ Robustness of system calls:
 - Test robustness of system call implementation.
 3	sc-bad-arg
 3	sc-bad-sp
-3	sc-bad-num
-3	sc-boundary
-3	sc-boundary-2
+5	sc-boundary
+5	sc-boundary-2
 
 - Test robustness of "exec" and "wait" system calls.
 5	exec-missing
 5	wait-bad-pid
-5	wait-load-kill
+5	wait-killed
 
 - Test robustness of exception handling.
 1	bad-read

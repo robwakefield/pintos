@@ -7,7 +7,6 @@
 #include "threads/malloc.h"
 #include "userprog/pagedir.h"
 #include "devices/swap.h"
-#include "userprog/syscall.h"
 
 static void page_destroy (struct hash_elem *e, void *aux UNUSED);
 
@@ -36,12 +35,12 @@ page_destroy (struct hash_elem *e, void *aux UNUSED)
   struct page *p = hash_entry (e, struct page, hash_elem);
 
   /* TODO: Lock frame or page? */
+  //struct thread *t = thread_current ();
 
-  if (p->status == IN_FRAME) {
-    ASSERT (p->kpage != NULL);
-    frame_free (p->kpage);
-  } else if (p->status == SWAPPED){
-    //TODO: swap_drop
+  if (p->kpage != NULL) {
+    ASSERT (p->status == IN_FRAME);
+    // TODO: make sure pages are getting freed
+    //frame_free (p->kpage);
   }
 
   free (p);
@@ -60,6 +59,7 @@ page_table_destroy (void)  {
 void
 page_dealloc (struct hash *pt, struct page *p)
 {
+  void *kaddr;
 
   if (hash_delete (pt, &p->hash_elem) != NULL)
   {
@@ -107,7 +107,7 @@ page_alloc_zeroed (struct hash *pt, void *vaddr) {
   p->writable = true;
   p->owner = thread_current ();
 
-  ASSERT (hash_insert (pt, &p->hash_elem) == NULL);
+  hash_insert (pt, &p->hash_elem);
 
   return p;
 }
@@ -116,6 +116,7 @@ bool
 page_set_dirty (struct hash *pt, void *vaddr, bool dirty) {
   struct page *p = page_lookup (pt, vaddr);
   if (p == NULL) {
+    // PANIC ("in set dirty - page does not exist");
     return false;
   }
 
@@ -136,7 +137,7 @@ page_alloc_with_file (struct hash *pt, void *upage, struct file *file, off_t off
   
   if (p != NULL) {
     /* Update metadata if load_segment is loading same page twice */
-    //printf("loading same page twice\n");
+    printf("loading same page twice\n");
     size_t new_read_bytes = p->read_bytes > read_bytes ? p->read_bytes : read_bytes;
 
     p->read_bytes = new_read_bytes;
@@ -170,8 +171,6 @@ page_alloc_with_file (struct hash *pt, void *upage, struct file *file, off_t off
     printf ("inserting already existing page in alloc_file\n");
     free (p);
   }
-  // replace with:
-  // ASSERT (hash_insert (pt, &p->hash_elem) == NULL);
 
   return true;
 }
@@ -192,6 +191,11 @@ page_install_frame (struct hash *pt, void *upage, void *kpage)
   p->dirty = false;
   p->owner = thread_current ();
 
+  // struct hash_elem *prev_elem;
+  // if (hash_insert (pt, &p->hash_elem) != NULL) {
+  //   //frame_free (kpage);
+  //   free (p);
+  // }
   return true;
 }
 
@@ -199,19 +203,16 @@ page_install_frame (struct hash *pt, void *upage, void *kpage)
 bool
 load_file (void *kpage, struct page *p)
 {
-  lock_acquire (&filesys_lock);
   file_seek (p->file, p->offset);
 
   /* Load data into the page. */
   if (file_read (p->file, kpage, p->read_bytes) != (int) p->read_bytes) {
     printf ("load_file did not read enough bytes\n");
-    lock_release (&filesys_lock);
     return false;
   }
   
   ASSERT (p->read_bytes + p->zero_bytes == PGSIZE);
   memset (kpage + p->read_bytes, 0, p->zero_bytes);
 
-  lock_release (&filesys_lock);
   return true;
 }

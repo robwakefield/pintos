@@ -2,7 +2,6 @@
 #include <debug.h>
 #include "filesys/inode.h"
 #include "threads/malloc.h"
-#include <hash.h>
 
 /* An open file. */
 struct file 
@@ -176,12 +175,4 @@ file_compare (struct file *file1, struct file *file2)
   ASSERT (file2 != NULL);
   
   return file_get_inode(file1) == file_get_inode(file2);
-}
-
-/* Hashing function for files in terms of their underlying inodes */
-unsigned 
-file_hash (struct file *file)
-{
-   ASSERT (file != NULL);
-   return hash_ptr(file_get_inode(file));
 }

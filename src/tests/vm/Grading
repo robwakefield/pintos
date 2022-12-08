@@ -8,5 +8,4 @@
 25%	tests/vm/Rubric.robustness
 10%	tests/userprog/Rubric.functionality
 10%	tests/userprog/Rubric.robustness
-0%	tests/userprog/Rubric.robustnessCR
 5%	tests/filesys/base/Rubric
