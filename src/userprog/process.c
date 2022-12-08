@@ -602,6 +602,7 @@ grow_stack (void *vaddr)
   // TODO: ensure this is correct
   if (vaddr < ((uint8_t *) PHYS_BASE) - MAX_STACK_SIZE) {
     printf ("STACK IS TOO BIG!\n");
+    return false;
   }
 
   void *kpage = frame_alloc (PAL_ZERO); // TODO: free this somewhere
