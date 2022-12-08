@@ -681,7 +681,6 @@ install_page (void *upage, void *kpage, bool writable)
      address, then map our page there. */
   return (pagedir_get_page (t->pagedir, upage) == NULL
           && pagedir_set_page (t->pagedir, upage, kpage, writable));
-  // && page_install_frame (t->page_table, upage, kpage);
 }
 
 bool load_file_page (struct page *p, void *kpage) {
@@ -760,8 +759,11 @@ load_page(struct hash *pt, uint32_t *pagedir, struct page *p)
     break;
 
   case FILE:
-    /* Load page from file into allocated frame. */
-    return load_file_page (p, kpage);
+    if (!file_share_page (p)) {
+      return load_file_page (p);
+    } else {
+      PANIC ("PAGE SHARED");
+    }
 
   default:
     ASSERT (false);
@@ -779,6 +781,76 @@ load_page(struct hash *pt, uint32_t *pagedir, struct page *p)
   
   frame_set_pinned (kpage, false);
   pagedir_set_dirty (pagedir, kpage, false);
+
+  return true;
+}
+
+bool file_share_page (struct page *p) {
+  if (p->kpage != NULL) {
+    return false;
+  }
+  // search page table for page pointing to same file 
+  struct hash *pt = thread_current ()->page_table;
+  struct page *temp = malloc (sizeof (struct page));
+  struct hash_elem *e;
+  temp->file = p->file;
+  temp->offset = p->offset;
+  e = hash_find (pt, &temp->hash_elem);
+  free (temp);
+  if (e == NULL) {
+    /* No corresponding file in pt to share with */
+    return false;
+  }
+  struct page *s = hash_entry (e, struct page, hash_elem);
+  if (s == NULL) {
+    return false;
+  }
+  page_install_frame (pt, p->addr, s->kpage);
+  if (s->status == IN_FRAME) {
+    return true;
+  } else {
+    p->status = s->status;
+    // SWAP (p)
+    printf ("SHARED PAGE IS NOT IN FRAME\n");
+    return true;
+  }
+
+}
+
+bool load_file_page (struct page *p) {
+  /* Check if virtual page already allocated */
+  struct thread *t = thread_current ();
+  uint8_t *kpage = pagedir_get_page (t->pagedir, p->addr);
+      
+  if (kpage == NULL){
+        
+    /* Get a new page of memory. */
+    kpage = frame_alloc (PAL_USER);
+    if (kpage == NULL){
+      return false;
+    }
+      
+    /* Add the page to the process's address space. */
+    if (!install_page (p->addr, kpage, p->writable)) {
+      frame_free (kpage);
+      return false; 
+    }     
+  } else {    
+    /* Check if writable flag for the page should be updated */
+    if(p->writable && !pagedir_is_writable(t->pagedir, p->addr)){
+      pagedir_set_writable(t->pagedir, p->addr, p->writable); 
+    }      
+  }
+
+  /* Load data into the page. */
+  if(!load_file (kpage, p)) {
+    frame_free (kpage);
+    return false;
+  }
+  p->kpage = kpage;
+  p->status = IN_FRAME;
+  // TODO: check if correct
+  pagedir_set_dirty (t->pagedir, kpage, false);
 
   return true;
 }

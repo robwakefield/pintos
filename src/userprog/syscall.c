@@ -111,7 +111,7 @@ void *valid_pointer (void *p, struct intr_frame *f, bool write)
   thread_current ()->esp = f->esp;
   if (write) {
     int b = get_user (p);
-    if (b == -1 || !put_user (p, b)) {
+    if (!put_user (p, b)) {
       //printf("exiting: bad write\n");
       exit_with_code (-1);
     }
