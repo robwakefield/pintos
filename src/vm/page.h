@@ -38,7 +38,9 @@ struct page
     struct file *file;          /* File. */
     off_t offset;               /* Offset in file. */
     uint32_t read_bytes;           /* Bytes to read/write, 1...PGSIZE. */
-    uint32_t zero_bytes;           
+    uint32_t zero_bytes;         
+
+    size_t swap_slot;  
   };
 
 unsigned page_hash (const struct hash_elem *e, void *aux UNUSED);

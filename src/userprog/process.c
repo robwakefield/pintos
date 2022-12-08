@@ -20,6 +20,8 @@
 #include "threads/vaddr.h"
 #include "vm/frame.h"
 #include "vm/page.h"
+#include "userprog/fdTable.h"
+#include "userprog/syscall.h"
 
 /* Passed argument struct */
 struct arguments {
@@ -45,7 +47,7 @@ process_execute (const char *file_name)
   
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
-  fn_copy = frame_alloc (0);
+  fn_copy = frame_alloc (0, NULL);
   
   if (fn_copy == NULL)
     return TID_ERROR;
@@ -53,7 +55,7 @@ process_execute (const char *file_name)
 
   /* Parse command line input into program name and arguments. */
   struct arguments *args;
-  args = frame_alloc (PAL_ZERO);
+  args = frame_alloc (PAL_ZERO, NULL);
   if (args == NULL) {
     frame_free (fn_copy);
     return TID_ERROR;
@@ -190,7 +192,7 @@ process_exit (void)
   uint32_t *pd;
 
   lock_acquire(&filesys_lock);
-  closeProcess(thread_current());
+  close_process(thread_current()->tid);
   lock_release(&filesys_lock);
 
   /* Once process exits, stop all children threads waiting blocked on sema_exit. */
@@ -561,7 +563,7 @@ setup_stack (const struct arguments *args, void **esp)
   uint8_t *kpage;
   bool success = false;
 
-  kpage = frame_alloc (PAL_ZERO);
+  kpage = frame_alloc (PAL_ZERO, ((uint8_t *) PHYS_BASE) - PGSIZE);
 
   if (kpage != NULL) 
     {
@@ -602,7 +604,7 @@ grow_stack (void *vaddr)
     printf ("STACK IS TOO BIG!\n");
   }
 
-  void *kpage = frame_alloc (PAL_ZERO); // TODO: free this somewhere
+  void *kpage = frame_alloc (PAL_ZERO, vaddr); // TODO: free this somewhere
   if (kpage == NULL) {
     printf ("Couldn't grow stack: eviction needs implementing\n");
     return false;
@@ -681,6 +683,43 @@ install_page (void *upage, void *kpage, bool writable)
           && pagedir_set_page (t->pagedir, upage, kpage, writable));
 }
 
+bool load_file_page (struct page *p, void *kpage) {
+
+  ASSERT (kpage != NULL);
+
+  /* Check if virtual page already allocated. */
+  struct thread *t = thread_current ();
+  uint8_t *frame = pagedir_get_page (t->pagedir, p->addr);
+      
+  if (frame == NULL){
+    /* Add the page to the process's address space. */
+    if (!install_page (p->addr, kpage, p->writable)) {
+      frame_free (kpage);
+      return false; 
+    }     
+
+  } else {    
+    /* Check if writable flag for the page should be updated */
+    if(p->writable && !pagedir_is_writable(t->pagedir, p->addr)){
+      pagedir_set_writable(t->pagedir, p->addr, p->writable); 
+    }      
+  }
+
+  /* Load data into the page. */
+  if(!load_file (kpage, p)) {
+    frame_free (kpage);
+    return false;
+  }
+
+  p->kpage = kpage;
+  p->status = IN_FRAME;
+
+  // TODO: check if correct
+  pagedir_set_dirty (t->pagedir, kpage, false);
+
+  return true;
+}
+
 bool
 load_page(struct hash *pt, uint32_t *pagedir, struct page *p)
 {
@@ -690,28 +729,33 @@ load_page(struct hash *pt, uint32_t *pagedir, struct page *p)
     return true;
   }
 
-  // 2. Obtain a frame to store the page
-  void *kpage = frame_alloc (PAL_USER);
+  /* Obtain a frame to store the page. */
+  void *kpage = frame_alloc (PAL_USER, p->addr);
   if (kpage == NULL) {
     return false;
   }
 
-  // 3. Fetch the data into the frame
+  /* Load page data into the frame. */
   bool writable = true;
 
   switch (p->status)
   {
   case ALL_ZERO:
+    /* Zeroed out page. */
     printf ("page case ALL_ZERO\n");
     memset (kpage, 0, PGSIZE);
     break;
 
   case IN_FRAME:
+    /* Page already loaded to frame, nothing more to do. */
+    /* TODO: return false or true? */
     break;
 
   case SWAPPED:
-    // Swap in: load the data from the swap disc
+    /* Swap in: load the data from the swap disc. */
     printf ("page case SWAPPED\n");
+    swap_in (kpage, p->swap_slot);
+    p->status = IN_FRAME;
     break;
 
   case FILE:
@@ -722,20 +766,20 @@ load_page(struct hash *pt, uint32_t *pagedir, struct page *p)
     }
 
   default:
-    //PANIC ("unreachable state");
     ASSERT (false);
   }
 
-  // 4. Point the page table entry for the faulting virtual address to the physical page.
+  /* Point the page table entry for the faulting virtual address to the physical page. */
   if (!install_page (p->addr, kpage, writable)) {
      frame_free (kpage);
      return false;
   }
 
-  // Make SURE to mapped kpage is stored in the SPTE.
+  /* Set SPTE data to point to the allocated kpage. */
   p->kpage = kpage;
   p->status = IN_FRAME;
-
+  
+  frame_set_pinned (kpage, false);
   pagedir_set_dirty (pagedir, kpage, false);
 
   return true;
