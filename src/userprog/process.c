@@ -720,43 +720,6 @@ bool load_file_page (struct page *p, void *kpage) {
   return true;
 }
 
-bool load_file_page (struct page *p, void *kpage) {
-
-  ASSERT (kpage != NULL);
-
-  /* Check if virtual page already allocated. */
-  struct thread *t = thread_current ();
-  uint8_t *frame = pagedir_get_page (t->pagedir, p->addr);
-      
-  if (frame == NULL){
-    /* Add the page to the process's address space. */
-    if (!install_page (p->addr, kpage, p->writable)) {
-      frame_free (kpage);
-      return false; 
-    }     
-
-  } else {    
-    /* Check if writable flag for the page should be updated */
-    if(p->writable && !pagedir_is_writable(t->pagedir, p->addr)){
-      pagedir_set_writable(t->pagedir, p->addr, p->writable); 
-    }      
-  }
-
-  /* Load data into the page. */
-  if(!load_file (kpage, p)) {
-    frame_free (kpage);
-    return false;
-  }
-
-  p->kpage = kpage;
-  p->status = IN_FRAME;
-
-  // TODO: check if correct
-  pagedir_set_dirty (t->pagedir, kpage, false);
-
-  return true;
-}
-
 bool
 load_page(struct hash *pt, uint32_t *pagedir, struct page *p)
 {
@@ -800,6 +763,7 @@ load_page(struct hash *pt, uint32_t *pagedir, struct page *p)
     if (!file_share_page (p)) {
       return load_file_page (p, kpage);
     }
+    break;
 
   default:
     ASSERT (false);
@@ -850,42 +814,4 @@ bool file_share_page (struct page *p) {
     printf ("SHARED PAGE IS NOT IN FRAME\n");
     return true;
   }
-}
-
-bool load_file_page (struct page *p) {
-  /* Check if virtual page already allocated */
-  struct thread *t = thread_current ();
-  uint8_t *kpage = pagedir_get_page (t->pagedir, p->addr);
-      
-  if (kpage == NULL){
-        
-    /* Get a new page of memory. */
-    kpage = frame_alloc (PAL_USER, p->addr);
-    if (kpage == NULL){
-      return false;
-    }
-      
-    /* Add the page to the process's address space. */
-    if (!install_page (p->addr, kpage, p->writable)) {
-      frame_free (kpage, true);
-      return false; 
-    }     
-  } else {    
-    /* Check if writable flag for the page should be updated */
-    if(p->writable && !pagedir_is_writable(t->pagedir, p->addr)){
-      pagedir_set_writable(t->pagedir, p->addr, p->writable); 
-    }      
-  }
-
-  /* Load data into the page. */
-  if(!load_file (kpage, p)) {
-    frame_free (kpage);
-    return false;
-  }
-  p->kpage = kpage;
-  p->status = IN_FRAME;
-  // TODO: check if correct
-  pagedir_set_dirty (t->pagedir, kpage, false);
-
-  return true;
 }
