@@ -71,6 +71,7 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f) 
 {
+  thread_current ()->esp = f->esp;
   /* Call appropriate system call function from system calls array. */
   int syscall_num = *(int *) valid_pointer (f->esp, f, 0);
 

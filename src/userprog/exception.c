@@ -173,10 +173,8 @@ page_fault (struct intr_frame *f)
       return;
     }
       
-    if (is_stack_access (fault_addr, f->esp)) {
-      if (!write) {
-        goto PAGE_FAULT_VIOLATED_ACCESS;
-      }
+    void *esp = user ? f->esp : thread_current ()->esp;
+    if (is_stack_access (fault_addr, esp) && write) {
       if (!grow_stack (fault_addr)) {
         goto PAGE_FAULT_VIOLATED_ACCESS;
       }
