@@ -747,14 +747,14 @@ bool load_file_page (struct page *p) {
   if (kpage == NULL){
         
     /* Get a new page of memory. */
-    kpage = palloc_get_page (PAL_USER);
+    kpage = frame_alloc (PAL_USER);
     if (kpage == NULL){
       return false;
     }
       
     /* Add the page to the process's address space. */
     if (!install_page (p->addr, kpage, p->writable)) {
-      palloc_free_page (kpage);
+      frame_free (kpage);
       return false; 
     }     
   } else {    
