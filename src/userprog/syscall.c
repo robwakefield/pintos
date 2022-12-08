@@ -13,6 +13,7 @@
 #include "threads/palloc.h"
 #include "userprog/syscall.h"
 #include "userprog/fdTable.h"
+#include "userprog/mapId.h"
 
 static void syscall_handler (struct intr_frame *);
 static void (*syscall_handlers[20]) (struct intr_frame *);     /* Array of function pointers so syscall handlers. */
@@ -66,6 +67,8 @@ syscall_init (void)
   syscall_handlers[SYS_SEEK] = &syscall_seek;
   syscall_handlers[SYS_TELL] = &syscall_tell;
   syscall_handlers[SYS_CLOSE] = &syscall_close;
+  syscall_handlers[SYS_MMAP] = &syscall_mmap;
+  syscall_handlers[SYS_MUNMAP] = &syscall_munmap;
 }
 
 static void
@@ -324,38 +327,61 @@ syscall_close (struct intr_frame *f) {
 void syscall_mmap (struct intr_frame *f){
   
   int fd = *(int*) get_argument (f, 0);
-  void *addr = valid_pointer (*(void**) get_argument (f, 1));
-  lock_acquire(&filesys_lock);
-  struct file *file = fd_to_file (fd); 
-  if (file == NULL){
-    f->eax =  -1;
-    return;
-  }
-  struct file *new_file = file_reopen(file);
-  if (new_file == NULL){
-    f->eax =  -1;
-    return;
-  }
-  int size = file_length(new_file);
-  void *buffer = palloc_get_multiple(PAL_USER,(size/PGSIZE) + 1);
-  if(buffer == NULL){
+  void *addr =  *(void**)get_argument (f, 1);
+  if(fd == 0 || fd == 1 || addr == 0 || (((int) addr) % PGSIZE) != 0 ){
     f->eax = -1;
-    file_close(new_file);
-  }else{
-    f->eax = assign_fd(new_file);
+    return;
   }
-
-  lock_release(&filesys_lock);
   
+  struct file *file = fd_to_file(fd);
+  if(file == NULL){
+    f->eax = -1;
+    return;
+  }
+  struct file *newFile = file_reopen(file);
+  if(newFile == NULL){
+    f->eax = -1;
+    return;
+  }
+  int size = file_length(newFile);
+  if(size == 0){
+    f->eax = -1;
+    return;
+  }
+  int i;
+  uint32_t read_bytes;
+  uint32_t zero_bytes;
+  
+  for( i = 0; i < size; i = i + PGSIZE){
+    if (i+PGSIZE < size){
+      read_bytes = PGSIZE;
+      zero_bytes = 0;
+    }else{
+      read_bytes = size - i;
+      zero_bytes = PGSIZE - read_bytes;
+    }
+    
+    if(! page_alloc_mmap(thread_current ()->page_table,addr + i,newFile,PGSIZE*i,read_bytes,zero_bytes,true)){
+      f->eax = -1;
+      for(i = i - PGSIZE; i >0; i = i - PGSIZE){ 
+        page_dealloc(thread_current ()->page_table,addr + i);
+      }
+      return;
+    }
+  }
+  f->eax = assign_mapId(newFile,addr);
 }
 
-//void munmap (mapid_t mapid)
+//void munmap (mapid_t mapid) 
 void syscall_munmap (struct intr_frame *f){
   int mapid = *(int*) get_argument (f, 0);
-  lock_acquire(&filesys_lock);
-  struct file *file = fd_to_file (mapid);
-  file_close(file);
-  lock_release(&filesys_lock);
+  struct mmapEntry *entry = mapId_to_file(mapid);
+  struct file *file = entry->file;
+  void *addr = entry->addr;
+  int size = file_length(file);
+  file_seek(file,0);
+  int a = file_write(file,addr,size);
+  
 }
 
 

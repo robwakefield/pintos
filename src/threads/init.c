@@ -90,6 +90,7 @@ main (void)
   /* Initialize ourselves as a thread so we can use locks,
      then enable console locking. */
   file_init();
+  mmap_init();
   thread_init ();
   console_init ();  
 

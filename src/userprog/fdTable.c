@@ -148,7 +148,7 @@ void remove_fd(int i){
   }
 }
 
-void close_process(int tid){
+void close_files(int tid){
   struct fdTable *table;
   for(table = tid_file_table(tid);(table != NULL);){
     for(int i = 0; i < FD_SIZE && table->free < FD_SIZE ;i++){

@@ -21,6 +21,7 @@
 #include "vm/frame.h"
 #include "vm/page.h"
 #include "userprog/fdTable.h"
+#include "userprog/mapId.h"
 
 /* Passed argument struct */
 struct arguments {
@@ -191,7 +192,8 @@ process_exit (void)
   uint32_t *pd;
 
   lock_acquire(&filesys_lock);
-  close_process(thread_current()->tid);
+  close_files(thread_current()->tid);
+  close_mapId(thread_current()->tid);
   lock_release(&filesys_lock);
 
   /* Once process exits, stop all children threads waiting blocked on sema_exit. */
@@ -718,7 +720,8 @@ load_page(struct hash *pt, uint32_t *pagedir, struct page *p)
 
   case FILE:
     return load_file_page (p);
-
+  case MMAPPED:
+    return load_file_page (p);
   default:
     //PANIC ("unreachable state");
     ASSERT (false);

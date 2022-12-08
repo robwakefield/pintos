@@ -137,7 +137,7 @@ page_alloc_with_file (struct hash *pt, void *upage, struct file *file, off_t off
   
   if (p != NULL) {
     /* Update metadata if load_segment is loading same page twice */
-    printf("loading same page twice\n");
+    //printf("loading same page twice\n");
     size_t new_read_bytes = p->read_bytes > read_bytes ? p->read_bytes : read_bytes;
 
     p->read_bytes = new_read_bytes;
@@ -170,6 +170,45 @@ page_alloc_with_file (struct hash *pt, void *upage, struct file *file, off_t off
   if (hash_insert (pt, &p->hash_elem) != NULL) {
     printf ("inserting already existing page in alloc_file\n");
     free (p);
+  }
+
+  return true;
+}
+
+bool 
+page_alloc_mmap (struct hash *pt, void *upage, struct file *file, off_t offset, 
+                      uint32_t read_bytes, uint32_t zero_bytes, bool writable)
+{
+  /* Check if virtual page already allocated */
+  struct page *p = page_lookup(pt, upage);
+  
+  // checks if page is alreay occupied.
+  if (p != NULL) {
+    return false;
+  }
+
+  /* Creates new table entry with given values if one cannot be found */
+  p = (struct page *) malloc (sizeof (struct page));
+  if (p == NULL) {
+    /* malloc failed */
+    return false;
+  }
+
+  p->file = file;
+  p->offset = offset;
+  p->read_bytes = read_bytes;
+  p->zero_bytes = zero_bytes;
+  p->kpage = NULL;
+  p->addr = upage;
+  p->owner = thread_current();
+  p->dirty = false;
+  p->writable = writable;
+  p->status = MMAPPED;
+    
+  if (hash_insert (pt, &p->hash_elem) != NULL) {
+    printf ("inserting already existing page in alloc_file\n");
+    free (p);
+    return false;
   }
 
   return true;
