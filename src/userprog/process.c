@@ -18,8 +18,6 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
-#include "vm/frame.h"
-#include "vm/page.h"
 
 /* Passed argument struct */
 struct arguments {
@@ -45,7 +43,7 @@ process_execute (const char *file_name)
   
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
-  fn_copy = frame_alloc (0);
+  fn_copy = palloc_get_page (0);
   
   if (fn_copy == NULL)
     return TID_ERROR;
@@ -53,9 +51,9 @@ process_execute (const char *file_name)
 
   /* Parse command line input into program name and arguments. */
   struct arguments *args;
-  args = frame_alloc (PAL_ZERO);
+  args = palloc_get_page (PAL_USER | PAL_ZERO);
   if (args == NULL) {
-    frame_free (fn_copy);
+    palloc_free_page (fn_copy); 
     return TID_ERROR;
   }
   args->fn_copy = fn_copy;
@@ -67,8 +65,8 @@ process_execute (const char *file_name)
     /* Check arguments will fit on stack 
      * 4 bytes are reserved for word-align, argv, argc, return address */
     if ((args_size + strlen (arg_val) + 1) + 4 * (args->argc + 1) + 4 > PGSIZE) {
-      frame_free (fn_copy);
-      frame_free (args);
+      palloc_free_page (fn_copy);
+      palloc_free_page (args);
       return TID_ERROR;
     }
     args->argv[args->argc] = arg_val;
@@ -108,8 +106,8 @@ start_process (void *aux)
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (args, &if_.eip, &if_.esp);
 
-  frame_free (args->fn_copy);
-  frame_free (args);
+  palloc_free_page (args->fn_copy);
+  palloc_free_page (args);
 
   struct thread *curr = thread_current ();
 
@@ -202,7 +200,6 @@ process_exit (void)
     sema_up(&temp->sema_exit);
   }
 
-
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -219,10 +216,6 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
-
-  /* Destroy the page hash table. */
-  page_table_destroy ();
-  cur->page_table = NULL;
   
   sema_up (&cur->sema_wait);
 
@@ -340,13 +333,6 @@ load (const struct arguments *args, void (**eip) (void), void **esp)
     goto done;
   process_activate ();
 
-  /* Create page hash table for current thread. */
-  t->page_table = malloc (sizeof (struct hash));
-  if (t->page_table == NULL) {
-    goto done;
-  }
-  hash_init (t->page_table, page_hash, page_less, NULL);
-
   /* Open executable file. */
   lock_acquire(&filesys_lock);
   file = filesys_open (file_name);
@@ -428,7 +414,7 @@ load (const struct arguments *args, void (**eip) (void), void **esp)
                   zero_bytes = ROUND_UP (page_offset + phdr.p_memsz, PGSIZE);
                 }
               if (!load_segment (file, file_page, (void *) mem_page,
-                                 read_bytes, zero_bytes, writable))          
+                                 read_bytes, zero_bytes, writable))
                 goto done;
             }
           else
@@ -539,18 +525,48 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
          and zero the final PAGE_ZERO_BYTES bytes. */
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
+      
+      /* Check if virtual page already allocated */
+      struct thread *t = thread_current ();
+      uint8_t *kpage = pagedir_get_page (t->pagedir, upage);
+      
+      if (kpage == NULL){
+        
+        /* Get a new page of memory. */
+        kpage = palloc_get_page (PAL_USER);
+        if (kpage == NULL){
+          return false;
+        }
+        
+        /* Add the page to the process's address space. */
+        if (!install_page (upage, kpage, writable)) 
+        {
+          palloc_free_page (kpage);
 
-      page_alloc_with_file (thread_current ()->page_table, upage, file, ofs, page_read_bytes, 
-                            page_zero_bytes, writable);
+          return false; 
+        }     
+        
+      } else {
+        
+        /* Check if writable flag for the page should be updated */
+        if(writable && !pagedir_is_writable(t->pagedir, upage)){
+          pagedir_set_writable(t->pagedir, upage, writable); 
+        }
+        
+      }
+
+      /* Load data into the page. */
+      if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes){
+        return false; 
+      }
+      memset (kpage + page_read_bytes, 0, page_zero_bytes);
+
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
-      ofs += page_read_bytes;
       upage += PGSIZE;
     }
-
   return true;
-
 }
 
 /* Create a minimal stack by mapping a zeroed page at the top of
@@ -561,7 +577,7 @@ setup_stack (const struct arguments *args, void **esp)
   uint8_t *kpage;
   bool success = false;
 
-  kpage = frame_alloc (PAL_ZERO);
+  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
 
   if (kpage != NULL) 
     {
@@ -569,61 +585,12 @@ setup_stack (const struct arguments *args, void **esp)
       if (success) {
         *esp = push_args_on_stack (args);
       } else {
-        frame_free (kpage);
+        palloc_free_page (kpage);
 
       }
       
     }
-  
-  // struct page *p = page_alloc_zeroed (thread_current ()->page_table, ((uint8_t *) PHYS_BASE) - PGSIZE);
-  // if (p == NULL)
-  // {
-  //   frame_free (kpage);
-  //   return false;
-  // }
-  // p->writable = true;
-  // p->status = IN_FRAME;
-  // p->kpage = kpage;
-
-  // if (hash_insert (thread_current ()->page_table, &p->hash_elem) != NULL) {
-  //   frame_free (kpage);
-  //   free (p);
-  // }
-
-  return true;
-}
-
-bool
-grow_stack (void *vaddr) 
-{
-  vaddr = pg_round_down (vaddr);
-  // TODO: ensure this is correct
-  if (vaddr < ((uint8_t *) PHYS_BASE) - MAX_STACK_SIZE) {
-    printf ("STACK IS TOO BIG!\n");
-  }
-
-  void *kpage = frame_alloc (PAL_ZERO); // TODO: free this somewhere
-  if (kpage == NULL) {
-    printf ("Couldn't grow stack: eviction needs implementing\n");
-    return false;
-  }
-
-  struct page *p = page_alloc_zeroed (thread_current ()->page_table, vaddr);
-  if (p == NULL) {
-    frame_free (kpage);
-    return false;
-  }
-  p->kpage = kpage;
-  p->writable = true;
-  p->status = IN_FRAME;
-
-  if (!install_page (p->addr, kpage, true)) {
-    frame_free (kpage);
-    frame_free (p);
-    printf ("Unable to grow stack!?\n");
-    return false;
-  }
-  return true;
+  return success;
 }
 
 static void *push_args_on_stack (const struct arguments *args) {
@@ -640,7 +607,7 @@ static void *push_args_on_stack (const struct arguments *args) {
   }
   
   /* Round esp down to multiple of 4 */
-  esp -= ((uint32_t) esp) % 4;
+  esp -= ((uint8_t) esp) % 4;
 
   /* Push address of each argument (RTL) */
   for (int i = args->argc; i >= 0; i--) {
@@ -649,9 +616,8 @@ static void *push_args_on_stack (const struct arguments *args) {
   }
   
   /* Push argv */
-  void *argv_p = esp;
-  esp -= sizeof (char **);
-  memcpy (esp, &argv_p, sizeof (char **));
+  memcpy (esp - sizeof (char **), &esp, sizeof (char **));
+  esp -= sizeof(char **);
   /* Push argc */
   esp -= sizeof (uint32_t);
   memcpy (esp, &args->argc, sizeof (uint32_t));
@@ -679,99 +645,4 @@ install_page (void *upage, void *kpage, bool writable)
      address, then map our page there. */
   return (pagedir_get_page (t->pagedir, upage) == NULL
           && pagedir_set_page (t->pagedir, upage, kpage, writable));
-  // && page_install_frame (t->page_table, upage, kpage);
-}
-
-bool
-load_page(struct hash *pt, uint32_t *pagedir, struct page *p)
-{
-  if (p->status == IN_FRAME) {
-    /* Page is already loaded. */
-    printf ("p is loaded, free newly allocated frame\n");
-    return true;
-  }
-
-  // 2. Obtain a frame to store the page
-  void *kpage = frame_alloc (PAL_USER);
-  if (kpage == NULL) {
-    return false;
-  }
-
-  // 3. Fetch the data into the frame
-  bool writable = true;
-
-  switch (p->status)
-  {
-  case ALL_ZERO:
-    printf ("page case ALL_ZERO\n");
-    memset (kpage, 0, PGSIZE);
-    break;
-
-  case IN_FRAME:
-    break;
-
-  case SWAPPED:
-    // Swap in: load the data from the swap disc
-    printf ("page case SWAPPED\n");
-    break;
-
-  case FILE:
-    return load_file_page (p);
-
-  default:
-    //PANIC ("unreachable state");
-    ASSERT (false);
-  }
-
-  // 4. Point the page table entry for the faulting virtual address to the physical page.
-  if (!install_page (p->addr, kpage, writable)) {
-     frame_free (kpage);
-     return false;
-  }
-
-  // Make SURE to mapped kpage is stored in the SPTE.
-  p->kpage = kpage;
-  p->status = IN_FRAME;
-
-  pagedir_set_dirty (pagedir, kpage, false);
-
-  return true;
-}
-
-bool load_file_page (struct page *p) {
-  /* Check if virtual page already allocated */
-  struct thread *t = thread_current ();
-  uint8_t *kpage = pagedir_get_page (t->pagedir, p->addr);
-      
-  if (kpage == NULL){
-        
-    /* Get a new page of memory. */
-    kpage = frame_alloc (PAL_USER);
-    if (kpage == NULL){
-      return false;
-    }
-      
-    /* Add the page to the process's address space. */
-    if (!install_page (p->addr, kpage, p->writable)) {
-      frame_free (kpage);
-      return false; 
-    }     
-  } else {    
-    /* Check if writable flag for the page should be updated */
-    if(p->writable && !pagedir_is_writable(t->pagedir, p->addr)){
-      pagedir_set_writable(t->pagedir, p->addr, p->writable); 
-    }      
-  }
-
-  /* Load data into the page. */
-  if(!load_file (kpage, p)) {
-    frame_free (kpage);
-    return false;
-  }
-  p->kpage = kpage;
-  p->status = IN_FRAME;
-  // TODO: check if correct
-  pagedir_set_dirty (t->pagedir, kpage, false);
-
-  return true;
 }

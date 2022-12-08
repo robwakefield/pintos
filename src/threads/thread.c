@@ -794,8 +794,6 @@ init_thread (struct thread *t, const char *name, int priority)
   
   t->exit_status = -1;
 #endif
-
-  t->page_table = NULL;
   
   list_init(&(t->locks));
   t->magic = THREAD_MAGIC;
