@@ -79,6 +79,8 @@ frame_free (void *frame, bool free_page) {
 
   ASSERT (to_remove != NULL);
 
+  //remove page
+
   // TODO: check this
   if (to_remove != NULL) {
     /* Deallocate the frame table entry. */
