@@ -14,7 +14,7 @@ static struct list_elem *clock_ptr;
 static struct list_elem *reset_ptr;
 
 static bool reset_set = false;
-static int frames_in_list = 0;
+static int no_of_clock_hand_moves = 0;
 
 /* Initialization code for frame table. */
 void
@@ -50,6 +50,7 @@ struct frame_entry *
 create_entry (void) {
   struct frame_entry *f = malloc (sizeof (struct frame_entry));
   list_init(&f->pages);
+  lock_init(&f->pages_lock);
 
   f->owner = thread_current ();
   
@@ -79,34 +80,38 @@ frame_free (void *kpage, bool free_page) {
   ASSERT (frame != NULL);
 
   struct page *p;
+  struct list_elem *e;
+  bool referenced = false;
 
-  lock_acquire (&frame->pages_lock);
-  for (e = list_begin (&frame->pages); e != list_end (&frame->pages);) {
-    p = list_entry (e, struct page, list_elem);
-    ASSERT (p != NULL);
+  if (!list_empty (&frame->pages)) {
 
-    if (p->owner == thread_current ()) {
-      e = list_remove (&p->list_elem);
-      //TODO: free the page table entry?
-      if (p->kpage == kpage) {
-        page_dealloc(thread_current ()->page_table, p);
+    lock_acquire (&frame->pages_lock);
+
+    for (e = list_begin (&frame->pages); e != list_end (&frame->pages);) {
+      p = list_entry (e, struct page, list_elem);
+      ASSERT (p != NULL);
+
+      if (p->owner == thread_current ()) {
+        e = list_remove (&p->list_elem);
+        //TODO: free the page table entry?
+        if (p->kpage == kpage) {
+          page_dealloc(thread_current ()->page_table, p);
+        }
+      } else {
+        e = list_next (e);
       }
-    } else {
-      e = list_next (e);
     }
+    referenced = !(list_empty (&frame->pages));
+
+    lock_release (&frame->pages_lock);
   }
 
-  bool no_reference = list_empty (&frame->pages);
 
-  lock_release (&frame->pages_lock);
-
-
-  if (no_reference) {
+  if (!referenced) {
     /* Deallocate the frame table entry. */
-    hash_delete (frame_table, &f->hash_elem);
+    hash_delete (frame_table, &frame->hash_elem);
     /* Remove from list for clock algorithm. */
-    list_remove (&f->list_elem);
-    frames_in_list -= 1;
+    list_remove (&frame->list_elem);
 
     if (free_page) {
        palloc_free_page (frame->frame_address);
@@ -124,11 +129,11 @@ frame_alloc (enum palloc_flags flags, void *upage) {
   void *f_page = palloc_get_page (PAL_USER | flags);
 
   if(f_page == NULL) {
-    evict_success = eviction ();
+    evict_success = eviction (flags);
 
-    /* Allocate after page eviction -> should succeed in this chance. */
-    f_page = palloc_get_page (PAL_USER | flags);
-    ASSERT (f_page != NULL);
+    // /* Allocate after page eviction -> should succeed in this chance. */
+    // f_page = palloc_get_page (PAL_USER | flags);
+    // ASSERT (f_page != NULL);
   }
 
   lock_acquire(&frame_table_lock);
@@ -143,9 +148,7 @@ frame_alloc (enum palloc_flags flags, void *upage) {
   } else {
     /* If no eviction was needed, insert new frame at the end of the frame list, move clock hand. */
     list_push_back (&frame_list, &new_frame->list_elem);
-    clock_hand_move ();
   }
-  frames_in_list += 1;
   lock_release (&frame_list_lock);
 
   /* Sets new page information (both for page-in and page replacement). */
@@ -172,7 +175,7 @@ frame_alloc (enum palloc_flags flags, void *upage) {
 }
 
 bool
-eviction (void) {
+eviction (enum palloc_flags flags) {
   /* Page allocation failed -> choose page to evict. */
   bool evicted = false;
   struct frame_entry *frame;
@@ -198,6 +201,8 @@ eviction (void) {
     } else {
       /* Referenced bit not set -> evict page. */
       lock_acquire (&frame->pages_lock);
+      struct list_elem *e;
+
       for (e = list_begin (&frame->pages); e != list_end (&frame->pages); e = list_next (e)) {
         struct page *p = list_entry (e, struct page, list_elem);
         ASSERT (p != NULL);
@@ -206,7 +211,7 @@ eviction (void) {
         p->swap_slot = swap_out (p->kpage);
         p->kpage = NULL;
         p->status = SWAPPED;
-        pagedir_clear_page (p->owner, p->addr);
+        pagedir_clear_page (p->owner->pagedir, p->addr);
       }
       lock_release (&frame->pages_lock);
 
@@ -215,10 +220,12 @@ eviction (void) {
       lock_release (&frame_table_lock);
       frame_free (frame->frame_address, true);
 
-      return true;
+      /* Allocate after page eviction -> should succeed in this chance. */
+      void *f_page = palloc_get_page (PAL_USER | flags);
+      evicted = (f_page != NULL);
     }
   }
-  return true;
+  return evicted;
 }
 
 void
@@ -233,11 +240,11 @@ clock_hand_move (void)
   }
 
   if (!reset_set) {
-    if (frames_in_list > (init_ram_pages/2) && 
-         (clock_ptr == NULL || clock_ptr == list_end (&frame_list))) 
-    {
-    reset_ptr = list_begin (&frame_list);
-    reset_set = true;
+    no_of_clock_hand_moves += 1;
+    
+    if (no_of_clock_hand_moves > (int) (init_ram_pages/2)) {
+      reset_ptr = list_begin (&frame_list);
+      reset_set = true;
     }
   } else {
     reset_hand_move ();
@@ -250,7 +257,7 @@ reset_hand_move (void)
   ASSERT (!list_empty(&frame_list));
 
   /* Set reference bit of page pointed to by the second clock hand to 0. */
-  struct frame_entry *frame = list_entry (clock_ptr, struct frame_entry, list_elem);
+  struct frame_entry *frame = list_entry (reset_ptr, struct frame_entry, list_elem);
   pagedir_set_accessed (frame->owner->pagedir, frame->upage, false);
   pagedir_set_accessed (frame->owner->pagedir, frame->frame_address, false);
 

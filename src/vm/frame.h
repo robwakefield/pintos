@@ -9,6 +9,7 @@
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 #include "threads/thread.h"
+#include "vm/page.h"
 
 struct frame_entry
 {
@@ -36,13 +37,13 @@ struct frame_entry *create_entry (void);
 struct frame_entry *search_elem (void *address);
 void remove_frame (void *frame);
 
-bool eviction (void);
+bool eviction (enum palloc_flags flags);
 void clock_hand_move (void);
 void reset_hand_move (void);
 
 void frame_set_pinned (void *kpage, bool pinned);
 
 struct frame_entry *frame_find (void *kpage);
-void add_to_pages (void *kpage, void *upage);
+void add_to_pages (void *kpage, struct page *p);
 
 #endif /* vm/frame.h */

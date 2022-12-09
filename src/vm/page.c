@@ -38,10 +38,7 @@ page_destroy (struct hash_elem *e, void *aux UNUSED)
 
   /* TODO: Lock frame or page? */
 
-  if (p->status == IN_FRAME) {
-    ASSERT (p->kpage != NULL);
-    frame_free (p->kpage, true);
-  } else if (p->status == SWAPPED){
+  if (p->status == SWAPPED){
     //TODO: swap_drop
     ASSERT ((int) p->swap_slot != -1);
     swap_drop(p->swap_slot);
