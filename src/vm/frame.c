@@ -130,10 +130,6 @@ frame_alloc (enum palloc_flags flags, void *upage) {
 
   if(f_page == NULL) {
     evict_success = eviction (flags);
-
-    // /* Allocate after page eviction -> should succeed in this chance. */
-    // f_page = palloc_get_page (PAL_USER | flags);
-    // ASSERT (f_page != NULL);
   }
 
   lock_acquire(&frame_table_lock);
@@ -158,11 +154,11 @@ frame_alloc (enum palloc_flags flags, void *upage) {
   struct thread *t = thread_current ();
   if (upage != NULL) {
     pagedir_set_accessed (t->pagedir, upage, true);
-    pagedir_set_accessed (t->pagedir, f_page, true);
+    //pagedir_set_accessed (t->pagedir, f_page, true);
     /* TODO: what user virtual addresses to allocate e.g. in setup stack? */
     if (pagedir_is_dirty (t->pagedir, upage) || pagedir_is_dirty (t->pagedir, f_page)) {
       pagedir_set_dirty (t->pagedir, upage, true);
-      pagedir_set_dirty (t->pagedir, f_page, true);
+      //pagedir_set_dirty (t->pagedir, f_page, true);
     }
   }
 
@@ -195,7 +191,7 @@ eviction (enum palloc_flags flags) {
     if (pagedir_is_accessed (frame->owner->pagedir, frame->upage)) {
       /* Referenced bit set -> give second chance and move clock pointer. */
       pagedir_set_accessed (frame->owner->pagedir, frame->upage, false);
-      pagedir_set_accessed (frame->owner->pagedir, frame->frame_address, false);
+      //pagedir_set_accessed (frame->owner->pagedir, frame->frame_address, false);
       clock_hand_move ();
       
     } else {
@@ -259,7 +255,7 @@ reset_hand_move (void)
   /* Set reference bit of page pointed to by the second clock hand to 0. */
   struct frame_entry *frame = list_entry (reset_ptr, struct frame_entry, list_elem);
   pagedir_set_accessed (frame->owner->pagedir, frame->upage, false);
-  pagedir_set_accessed (frame->owner->pagedir, frame->frame_address, false);
+  //pagedir_set_accessed (frame->owner->pagedir, frame->frame_address, false);
 
   if (reset_ptr == NULL || reset_ptr == list_end (&frame_list)) {
     reset_ptr = list_begin (&frame_list);
