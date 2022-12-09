@@ -320,7 +320,7 @@ void syscall_mmap (struct intr_frame *f){
   
   int fd = *(int*) get_argument (f, 0);
   void *addr =  *(void**)get_argument (f, 1);
-  if(fd == 0 || fd == 1 || addr == 0 || (((int) addr) % PGSIZE) != 0 ){
+  if(fd == 0 || fd == 1 || addr == 0 || (((int) addr) % PGSIZE) != 0 || f->esp< addr+PGSIZE){
     f->eax = -1;
     return;
   }
