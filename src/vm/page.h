@@ -8,6 +8,7 @@
 #include "filesys/file.h"
 #include "vm/frame.h"
 #include "threads/synch.h"
+#include <list.h>
 
 
 enum page_status
@@ -41,6 +42,7 @@ struct page
     uint32_t zero_bytes;         
 
     size_t swap_slot;  
+    struct list_elem list_elem;
   };
 
 unsigned page_hash (const struct hash_elem *e, void *aux UNUSED);

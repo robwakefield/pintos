@@ -534,6 +534,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
 
+  /* Note: filesys_lock should already be acquired here */
   file_seek (file, ofs);
   while (read_bytes > 0 || zero_bytes > 0) 
     {
@@ -565,6 +566,7 @@ setup_stack (const struct arguments *args, void **esp)
   bool success = false;
 
   kpage = frame_alloc (PAL_ZERO, ((uint8_t *) PHYS_BASE) - PGSIZE);
+  frame_set_pinned (kpage, true);
 
   if (kpage != NULL) 
     {
@@ -577,21 +579,6 @@ setup_stack (const struct arguments *args, void **esp)
       }
       
     }
-  
-  // struct page *p = page_alloc_zeroed (thread_current ()->page_table, ((uint8_t *) PHYS_BASE) - PGSIZE);
-  // if (p == NULL)
-  // {
-  //   frame_free (kpage);
-  //   return false;
-  // }
-  // p->writable = true;
-  // p->status = IN_FRAME;
-  // p->kpage = kpage;
-
-  // if (hash_insert (thread_current ()->page_table, &p->hash_elem) != NULL) {
-  //   frame_free (kpage);
-  //   free (p);
-  // }
 
   return true;
 }
@@ -603,6 +590,7 @@ grow_stack (void *vaddr)
   // TODO: ensure this is correct
   if (vaddr < ((uint8_t *) PHYS_BASE) - MAX_STACK_SIZE) {
     printf ("STACK IS TOO BIG!\n");
+    return false;
   }
 
   void *kpage = frame_alloc (PAL_ZERO, vaddr); // TODO: free this somewhere
@@ -706,11 +694,16 @@ bool load_file_page (struct page *p, void *kpage) {
     }      
   }
 
+  lock_acquire (&filesys_lock);
+
   /* Load data into the page. */
   if(!load_file (kpage, p)) {
     frame_free (kpage, true);
+    lock_release (&filesys_lock);
     return false;
   }
+
+  lock_release (&filesys_lock);
 
   p->kpage = kpage;
   p->status = IN_FRAME;
@@ -762,6 +755,7 @@ load_page(struct hash *pt, uint32_t *pagedir, struct page *p)
     if (!file_share_page (p)) {
       return load_file_page (p, kpage);
     }
+    load_page (pt, pagedir, p);
     break;
   case MMAPPED:
     return load_file_page (p, kpage);
@@ -806,13 +800,25 @@ bool file_share_page (struct page *p) {
   struct page *s = hash_entry (e, struct page, hash_elem);
   ASSERT (s != NULL);
 
+  // lock_acquire (&filesys_lock);
+  // /* Load data into the page. */
+  // if(!load_file (kpage, p)) {
+  //   lock_release (&filesys_lock);
+  //   frame_free (kpage, true);
+  //   return false;
+  // }
+  // lock_release (&filesys_lock);
+
+  // p->kpage = kpage;
+  // p->status = IN_FRAME;
+  // // TODO: check if correct
+  // pagedir_set_dirty (t->pagedir, kpage, false);
+
   page_install_frame (pt, p->addr, s->kpage);
   if (s->status == IN_FRAME) {
     return true;
   } else {
     p->status = s->status;
-    // SWAP PAGE
-    p->swap_slot = swap_out (p->addr);
     printf ("SHARED PAGE IS NOT IN FRAME\n");
     return true;
   }

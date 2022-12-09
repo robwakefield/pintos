@@ -110,6 +110,11 @@ kill (struct intr_frame *f)
     }
 }
 
+static bool
+is_stack_access (void *fault_addr, void *esp) {
+  return (fault_addr + 32 == esp || fault_addr + 4 == esp || fault_addr >= esp) && fault_addr < PHYS_BASE;
+}
+
 /* Page fault handler.  This is a skeleton that must be filled in
    to implement virtual memory.  Some solutions to task 2 may
    also require modifying this code.
@@ -168,7 +173,8 @@ page_fault (struct intr_frame *f)
       return;
     }
       
-    if ((fault_addr + 32 == f->esp || fault_addr + 4 == f->esp || fault_addr >= f->esp) && fault_addr < PHYS_BASE && write) {
+    void *esp = user ? f->esp : thread_current ()->esp;
+    if (is_stack_access (fault_addr, esp) && write) {
       if (!grow_stack (fault_addr)) {
         goto PAGE_FAULT_VIOLATED_ACCESS;
       }

@@ -161,6 +161,8 @@ eviction (void) {
   bool evicted = false;
   struct frame_entry *frame;
 
+  lock_acquire (&frame_table_lock);
+
   while (!evicted) {
     ASSERT (clock_ptr != NULL);
     frame = list_entry (clock_ptr, struct frame_entry, list_elem);
@@ -187,6 +189,7 @@ eviction (void) {
       p->kpage = NULL;
       p->status = SWAPPED;
       pagedir_clear_page (frame->owner->pagedir, p->addr);
+      
 
       /* Remove frame. */
       clock_hand_move ();
@@ -195,6 +198,8 @@ eviction (void) {
       evicted = true;
     }
   }
+
+  lock_release (&frame_table_lock);
 
   return evicted;
 }

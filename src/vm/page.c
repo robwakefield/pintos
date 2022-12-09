@@ -231,7 +231,6 @@ page_install_frame (struct hash *pt, void *upage, void *kpage)
 bool
 load_file (void *kpage, struct page *p)
 {
-  lock_acquire (&filesys_lock);
   file_seek (p->file, p->offset);
 
   /* Load data into the page. */
@@ -243,8 +242,7 @@ load_file (void *kpage, struct page *p)
   
   ASSERT (p->read_bytes + p->zero_bytes == PGSIZE);
   memset (kpage + p->read_bytes, 0, p->zero_bytes);
-
-  lock_release (&filesys_lock);
+  
   return true;
 }
 
