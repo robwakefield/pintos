@@ -750,14 +750,14 @@ load_page(struct hash *pt, uint32_t *pagedir, struct page *p)
     break;
 
   case FILE:
+  case MMAPPED:
     /* Load page from file into allocated frame. */
     if (!file_share_page (p)) {
       return load_file_page (p, kpage);
     }
     load_page (pt, pagedir, p);
     break;
-  case MMAPPED:
-    return load_file_page (p, kpage);
+
   default:
     ASSERT (false);
   }
