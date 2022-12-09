@@ -1,9 +1,6 @@
 #define MM_SIZE 8
 
-struct mmapEntry{
-    struct file *file;
-    void *addr;
-};
+
 
 struct mmapTable{
   struct mmapProc *header;
@@ -11,7 +8,7 @@ struct mmapTable{
   struct mmapTable *nextTable;
   struct mmapTable *prevTable;
   int free;
-  struct mmapEntry *table[MM_SIZE];
+  void* table[MM_SIZE];
 };
 
 struct mmapProc{
@@ -22,7 +19,7 @@ struct mmapProc{
 
 
 void mmap_init(void);
-int assign_mapId(struct file*,void *);
-struct mmapEntry* mapId_to_file(int );
+int assign_mapId(void *);
+void* mapId_to_file(int );
 void remove_mapId(int);
 void close_mapId(int);
