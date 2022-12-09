@@ -4,7 +4,7 @@
 #include "threads/thread.h"
 #include "vm/page.h"
 
-#define MAX_STACK_SIZE 0x800000
+#define MAX_STACK_SIZE 0x200000
 
 tid_t process_execute (const char *file_name);
 int process_wait (tid_t);

@@ -566,10 +566,10 @@ setup_stack (const struct arguments *args, void **esp)
   bool success = false;
 
   kpage = frame_alloc (PAL_ZERO, ((uint8_t *) PHYS_BASE) - PGSIZE);
-  frame_set_pinned (kpage, true);
 
   if (kpage != NULL) 
     {
+      frame_set_pinned (kpage, true);
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success) {
         *esp = push_args_on_stack (args);
@@ -707,7 +707,7 @@ bool load_file_page (struct page *p, void *kpage) {
   p->kpage = kpage;
   p->status = IN_FRAME;
 
-  frame_set_pinned(kpage, false);
+  frame_set_pinned (kpage, false);
   pagedir_set_dirty (t->pagedir, kpage, false);
 
   return true;
@@ -726,6 +726,7 @@ load_page(struct hash *pt, uint32_t *pagedir, struct page *p)
   if (kpage == NULL) {
     return false;
   }
+  frame_set_pinned (kpage, true);
 
   /* Load page data into the frame. */
   bool writable = true;
@@ -756,7 +757,7 @@ load_page(struct hash *pt, uint32_t *pagedir, struct page *p)
       return load_file_page (p, kpage);
     }
     load_page (pt, pagedir, p);
-    break;
+    return;
 
   default:
     ASSERT (false);
