@@ -124,6 +124,17 @@ Hash.
 >> swap table.  
 >> Identify the purpose of each in roughly 25 words.
 
+/* Same struct as in A1 with the fields used for paging from a file highlighted */
+struct page
+{
+  ...
+  struct file *file;          /* File. */
+  off_t offset;               /* Offset in file. */
+  uint32_t read_bytes;        /* Bytes to read/write, 1...PGSIZE. */
+  uint32_t zero_bytes;
+  ...
+};
+
 ---- ALGORITHMS ----
 
 >> B2: (2 marks)
@@ -134,8 +145,6 @@ Hash.
 >> When a process P obtains a frame that was previously used by a process Q,
 >> how do you adjust the page directory of process Q (and any other data 
 >> structures) to reflect the frame Q no longer has?
-
-
 
 ---- SYNCHRONIZATION ----
 
