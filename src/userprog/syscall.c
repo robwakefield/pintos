@@ -384,8 +384,10 @@ void syscall_munmap (struct intr_frame *f){
   for(int i = 0; i < size; i = i + PGSIZE){
     struct page *page = page_lookup (thread_current ()->page_table, addr+i);
     file_seek(file,i);
-    if(page->status == IN_FRAME || (thread_current ()->page_table,page->kpage)){ 
-      file_write(file,addr+i,PGSIZE);
+    if(page->status == IN_FRAME){ 
+      if(pagedir_is_dirty(thread_current ()->pagedir,page->kpage)){
+        file_write(file,addr+i,PGSIZE);
+      }
     }
     page_dealloc(thread_current ()->page_table,page);
     
