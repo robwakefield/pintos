@@ -252,6 +252,5 @@ load_file (void *kpage, struct page *p)
   
   ASSERT (p->read_bytes + p->zero_bytes == PGSIZE);
   memset (kpage + p->read_bytes, 0, p->zero_bytes);
-
   return true;
 }

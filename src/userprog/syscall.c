@@ -374,13 +374,25 @@ void syscall_mmap (struct intr_frame *f){
 
 //void munmap (mapid_t mapid) 
 void syscall_munmap (struct intr_frame *f){
+  lock_acquire(&filesys_lock);
   int mapid = *(int*) get_argument (f, 0);
   struct mmapEntry *entry = mapId_to_file(mapid);
   struct file *file = entry->file;
   void *addr = entry->addr;
   int size = file_length(file);
-  file_seek(file,0);
-  int a = file_write(file,addr,size);
+  
+  for(int i = 0; i < size; i = i + PGSIZE){
+    struct page *page = page_lookup (thread_current ()->page_table, addr+i);
+    file_seek(file,i);
+    if(page->status == IN_FRAME || (thread_current ()->page_table,page->kpage)){ 
+      file_write(file,addr+i,PGSIZE);
+    }
+    page_dealloc(thread_current ()->page_table,page);
+    
+  }
+  remove_mapId(mapid);
+  lock_release(&filesys_lock);
+  
   
 }
 
