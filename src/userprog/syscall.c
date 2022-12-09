@@ -360,31 +360,36 @@ void syscall_mmap (struct intr_frame *f){
       return;
     }
   }
-  f->eax = assign_mapId(newFile,addr);
+  f->eax = assign_mapId(addr);
 }
 
 //void munmap (mapid_t mapid) 
 void syscall_munmap (struct intr_frame *f){
   lock_acquire(&filesys_lock);
   int mapid = *(int*) get_argument (f, 0);
-  struct mmapEntry *entry = mapId_to_file(mapid);
-  struct file *file = entry->file;
-  void *addr = entry->addr;
-  int size = file_length(file);
+  unmmap(mapid);
+  remove_mapId(mapid);
+  lock_release(&filesys_lock);
   
+}
+
+void unmmap (int mapid){
+  
+  void *addr = mapId_to_file(mapid);
+  struct page *page = page_lookup (thread_current ()->page_table, addr);
+  struct file *file = page->file;
+  int size = file_length(file);
   for(int i = 0; i < size; i = i + PGSIZE){
     struct page *page = page_lookup (thread_current ()->page_table, addr+i);
-    file_seek(file,i);
-    if(page->status == IN_FRAME){ 
-      if(pagedir_is_dirty(thread_current ()->pagedir,page->kpage)){
-        file_write(file,addr+i,PGSIZE);
-      }
+    file_seek(page->file,page->offset);
+    if(page->status == IN_FRAME && pagedir_is_dirty(page->owner->pagedir,page->addr)){ 
+      
+      file_write(page->file,page->addr,page->read_bytes);
+      
     }
     page_dealloc(thread_current ()->page_table,page);
     
   }
-  remove_mapId(mapid);
-  lock_release(&filesys_lock);
   
   
 }
