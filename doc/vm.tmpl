@@ -88,7 +88,7 @@ struct frame_entry
 >> Describe your code for finding the frame (if any) or other location that 
 >> contains the data of a given page.
 
-If a page has already been installed then the frame is mapped using the functions in pagedir.c. Otherwise the page is not loaded and a page fault will occur. To load the page, we have a field in our page struct that stores the status of that page (IN_FRAME, MMAPPED, SWAPPED, ...), this field is checked and the frame adress is found based on the status. If the page is IN_FRAME, then the address is simply the kpage field of the page. If the page is MMAPPED or a FILE then the page is loaded from the file into a frame and the address of that frame is stored in the pages kpage field. If the page status is SWAPPED then the page is swapped back in and the frame address stored in the kpage field. In all cases but IN_FRAME, the page is installed to the pagedir using install_page(). 
+If a page has already been installed then the frame is mapped using the functions in pagedir.c. Otherwise the page is not loaded and a page fault will occur. To load the page, we have a field in our page struct that stores the status of that page (IN_FRAME, MMAPPED, SWAPPED, ...), this field is checked and the frame address is found based on the status. If the page is IN_FRAME, then the address is simply the kpage field of the page. If the page is MMAPPED or a FILE then the page is loaded from the file into a frame and the address of that frame is stored in the pages kpage field. If the page status is SWAPPED then the page is swapped back in and the frame address stored in the kpage field. In all cases but IN_FRAME, the page is installed to the pagedir using install_page(). 
 
 >> A3: (2 marks)
 >> How have you implemented sharing of read only pages?
@@ -216,9 +216,9 @@ A list of the mapId tables
 >> existing segment and how you handle such a case.
 
 Firstly we check if the address given lies inside the area set aside for the initial stack and return -1 if this is the case.
-Then we try to open each page in turn, first checking if the page is already allocated using page_lookup to check whether the address corrosponds to an existing entry. 
+Then we try to open each page in turn, first checking if the page is already allocated using page_lookup to check whether the address corresponds to an existing entry. 
 If a page is already allocated then any pages that had previously been allocated for the MMAP are deallocated and -1 is returned.
-If all the pages are successfully allocated then it is stored in the MapId table and the corosponding MapId is returned.
+If all the pages are successfully allocated then it is stored in the MapId table and the corresponding MapId is returned.
 
 ---- RATIONALE ----
 
@@ -227,4 +227,4 @@ If all the pages are successfully allocated then it is stored in the MapId table
 >> demand-paged from executables. 
 >> How does your code-base take advantage of this?
 
-Once pages are allocated data from files are loaded and evicted in the same way since this behavour is the same between them. 
+Once pages are allocated, data from files are loaded and evicted in the same way since this behaviour is the same between them. 
