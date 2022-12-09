@@ -176,6 +176,8 @@ When we check that a pointer in a system call is valid, we check whether we can 
 >> Explain where your design falls along this continuum and why you chose to 
 >> design it this way.
 
+We chose to implement course grained locking of our frame table. This was to ensure that we did not miss any complex race conditions that could arise form a finer grained approach. This will lead to a decrease in performance when many processes are accessing the frame table at once, but given the limitation of the pintos os we thought that this was a reassonable trade off. We chose not to lock the page table as there will be no race conditions due to the page table only ever being accessed by the thread which owns it. Overall we chose to provide a very safe synchronisation strategy even though it may not be the most parallel in order to best suit the pintos os limitations and maintain solid memory safety.
+
              MEMORY MAPPED FILES
              ===================
 
