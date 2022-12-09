@@ -32,11 +32,63 @@ FirstName LastName <email@domain.example>
 >> supplemental page table and frame table. 
 >> Identify the purpose of each in roughly 25 words.
 
+/* enum to track the status of the page in the page table */
+enum page_status
+{
+  ALL_ZERO,       /* Zeroed page (new page). */
+  IN_FRAME,       /* Frame allocated to page. */
+  SWAPPED,        /* Page is swapped (in swap slot). */
+  FILE,           /* Page needs to be loaded from file */
+  MMAPPED         /* Page is mmapped */
+};
+
+/* Virtual page stored in the SPTE */
+struct page
+{
+  void *addr;                 /* User virtual address. */
+  bool writable;             /* Read-only page? */
+  bool dirty;
+  struct thread *owner;      /* Owning thread. */
+
+  enum page_status status;
+
+  struct hash_elem hash_elem;
+  struct list_elem list_elem;
+
+  /* Set only in owning process context with frame->frame_lock held.
+  Cleared only with scan_lock and frame->frame_lock held. */
+  void *kpage;   
+
+  struct file *file;          /* File. */
+  off_t offset;               /* Offset in file. */
+  uint32_t read_bytes;           /* Bytes to read/write, 1...PGSIZE. */
+  uint32_t zero_bytes;
+  
+  size_t swap_slot;
+};
+
+/* Stores the necessary information needed for each entry in the frame table */
+struct frame_entry
+{
+  void *frame_address;
+  void *upage;
+
+  struct list pages;
+  struct lock pages_lock;
+
+  bool pinned;
+  struct thread *owner;
+  struct hash_elem hash_elem;
+  struct list_elem list_elem;
+};
+
 ---- ALGORITHMS ----
 
 >> A2: (2 marks) 
 >> Describe your code for finding the frame (if any) or other location that 
 >> contains the data of a given page.
+
+If a page has already been installed then the frame is mapped using the functions in pagedir.c. Otherwise the page is not loaded and a page fault will occur. To load the page, we have a field in our page struct that stores the status of that page (IN_FRAME, MMAPPED, SWAPPED, ...), this field is checked and the frame adress is found based on the status. If the page is IN_FRAME, then the address is simply the kpage field of the page. If the page is MMAPPED or a FILE then the page is loaded from the file into a frame and the address of that frame is stored in the pages kpage field. If the page status is SWAPPED then the page is swapped back in and the frame address stored in the kpage field. In all cases but IN_FRAME, the page is installed to the pagedir using install_page(). 
 
 >> A3: (2 marks)
 >> How have you implemented sharing of read only pages?
