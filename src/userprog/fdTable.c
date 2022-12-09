@@ -165,5 +165,3 @@ void close_process(int tid){
     table = table->nextTable;
   }
 }
-
-

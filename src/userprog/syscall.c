@@ -19,8 +19,19 @@ static void (*syscall_handlers[20]) (struct intr_frame *);     /* Array of funct
 void exit_with_code (int);
 static void *valid_pointer (void *, struct intr_frame *, bool);
 
+static struct mmap *get_mmap(mapid_t id) {
+  struct thread *curr = thread_current ();
 
-
+  for (struct list_elem *e = list_begin (&curr->mmap_list);
+      e != list_end(&cur->mmap_list); e = list_next(e))
+  {
+    struct mmap *ret = list_entry(e, struct mmap, mmap_elem);
+    if (ret->id == id) {
+      return ret;
+    }
+  }
+    return NULL;
+}
 
 void *get_argument (struct intr_frame *f, int i);
 
@@ -242,7 +253,7 @@ syscall_read (struct intr_frame *f) {
     if (file != NULL) {  
       f->eax = file_read (file, buffer, size);
     }
-    lock_release (&filesys_lock);
+      lock_release (&filesys_lock);
   }
 }
 
@@ -318,8 +329,7 @@ syscall_close (struct intr_frame *f) {
 void syscall_mmap (struct intr_frame *f){
   
   int fd = *(int*) get_argument (f, 0);
-  // unused variable
-  //void *addr = valid_pointer (*(void**) get_argument (f, 1), f, 0);
+  void *addr = valid_pointer (*(void**) get_argument (f, 1), f, 0);
   lock_acquire(&filesys_lock);
   struct file *file = fd_to_file (fd); 
 

@@ -122,6 +122,7 @@ struct thread
 
 	struct hash *page_table;                    /* Thread's supplemental page table. */
    uint8_t *esp;
+   struct list mmap_list
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */

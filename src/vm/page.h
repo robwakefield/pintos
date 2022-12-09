@@ -60,4 +60,7 @@ bool page_install_frame (struct hash *pt, void *upage, void *kpage);
 
 bool load_file (void *kpage, struct page *p);
 
+bool
+page_munmap(struct hash *pt, uint32_t *pagedir, void *upage, struct file *f, off_t offset, size_t bytes);
+
 #endif /* vm/page.h */
