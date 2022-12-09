@@ -88,7 +88,7 @@ kill (struct intr_frame *f)
               thread_name (), f->vec_no, intr_name (f->vec_no));
       intr_dump_frame (f);
       exit_with_code (-1);
-      
+      break;
 
     case SEL_KCSEG:
       /* Kernel's code segment, which indicates a kernel bug.
@@ -105,6 +105,11 @@ kill (struct intr_frame *f)
              f->vec_no, intr_name (f->vec_no), f->cs);
       PANIC ("Kernel bug - this shouldn't be possible!");
     }
+}
+
+static bool
+is_stack_access (void *fault_addr, void *esp) {
+  return (fault_addr + 32 == esp || fault_addr + 4 == esp || fault_addr >= esp) && fault_addr < PHYS_BASE;
 }
 
 /* Page fault handler.  This is a skeleton that must be filled in
@@ -142,19 +147,49 @@ page_fault (struct intr_frame *f)
   /* Count page faults. */
   page_fault_cnt++;
 
-  /* Determine cause. */
-  not_present = (f->error_code & PF_P) == 0;
-  write = (f->error_code & PF_W) != 0;
-  user = (f->error_code & PF_U) != 0;
+   /* Determine cause. */
+   not_present = (f->error_code & PF_P) == 0;
+   write = (f->error_code & PF_W) != 0;
+   user = (f->error_code & PF_U) != 0;
+/*
+   printf ("Page fault at %p: %s error %s page in %s context.\n",
+            fault_addr,
+            not_present ? "not present" : "rights violation",
+            write ? "writing" : "reading",
+            user ? "user" : "kernel");
+*/
+   if (not_present) {
+    struct page *p = page_lookup (curr->page_table, fault_addr);
 
-  /* To implement virtual memory, delete the rest of the function
-     body, and replace it with code that brings in the page to
-     which fault_addr refers. */
-  printf ("Page fault at %p: %s error %s page in %s context.\n",
-          fault_addr,
-          not_present ? "not present" : "rights violation",
-          write ? "writing" : "reading",
-          user ? "user" : "kernel");
-  kill (f);
+    if (p != NULL) {
+      if (!load_page (curr->page_table, curr->pagedir, p)) {
+            goto PAGE_FAULT_VIOLATED_ACCESS;
+      }
+      return;
+    }
+      
+    void *esp = user ? f->esp : thread_current ()->esp;
+    if (is_stack_access (fault_addr, esp) && write) {
+      if (!grow_stack (fault_addr)) {
+        goto PAGE_FAULT_VIOLATED_ACCESS;
+      }
+      return;
+    }
+  }
+
+  if ((int*) fault_addr != 0xffffffff && !user) {
+    f->eip = (void*) f->eax;
+    f->eax = 0xffffffff;
+    return;
+  }
+
+PAGE_FAULT_VIOLATED_ACCESS:
+   printf ("Page fault at %p: %s error %s page in %s context.\n",
+                     fault_addr,
+                     not_present ? "not present" : "rights violation",
+                     write ? "writing" : "reading",
+                     user ? "user" : "kernel");
+   kill (f);
+
 }
 

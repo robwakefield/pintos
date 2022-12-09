@@ -18,6 +18,10 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "vm/frame.h"
+#include "vm/page.h"
+#include "userprog/fdTable.h"
+#include "userprog/mapId.h"
 
 /* Passed argument struct */
 struct arguments {
@@ -43,17 +47,17 @@ process_execute (const char *file_name)
   
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
-  fn_copy = palloc_get_page (0);
-  
+  fn_copy = frame_alloc (0, NULL);
+
   if (fn_copy == NULL)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
   /* Parse command line input into program name and arguments. */
   struct arguments *args;
-  args = palloc_get_page (PAL_USER | PAL_ZERO);
+  args = frame_alloc (PAL_ZERO, NULL);
   if (args == NULL) {
-    palloc_free_page (fn_copy); 
+    frame_free (fn_copy, true);
     return TID_ERROR;
   }
   args->fn_copy = fn_copy;
@@ -65,8 +69,8 @@ process_execute (const char *file_name)
     /* Check arguments will fit on stack 
      * 4 bytes are reserved for word-align, argv, argc, return address */
     if ((args_size + strlen (arg_val) + 1) + 4 * (args->argc + 1) + 4 > PGSIZE) {
-      palloc_free_page (fn_copy);
-      palloc_free_page (args);
+      frame_free (fn_copy, true);
+      frame_free (args, true);
       return TID_ERROR;
     }
     args->argv[args->argc] = arg_val;
@@ -106,8 +110,8 @@ start_process (void *aux)
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (args, &if_.eip, &if_.esp);
 
-  palloc_free_page (args->fn_copy);
-  palloc_free_page (args);
+  frame_free (args->fn_copy, true);
+  frame_free (args, true);
 
   struct thread *curr = thread_current ();
 
@@ -188,7 +192,8 @@ process_exit (void)
   uint32_t *pd;
 
   lock_acquire(&filesys_lock);
-  closeProcess(thread_current());
+  close_files(thread_current()->tid);
+  close_mapId(thread_current()->tid);
   lock_release(&filesys_lock);
 
   /* Once process exits, stop all children threads waiting blocked on sema_exit. */
@@ -517,6 +522,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
 
+  /* Note: filesys_lock should already be acquired here */
   file_seek (file, ofs);
   while (read_bytes > 0 || zero_bytes > 0) 
     {
@@ -577,20 +583,56 @@ setup_stack (const struct arguments *args, void **esp)
   uint8_t *kpage;
   bool success = false;
 
-  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+  kpage = frame_alloc (PAL_ZERO, ((uint8_t *) PHYS_BASE) - PGSIZE);
 
   if (kpage != NULL) 
     {
+      frame_set_pinned (kpage, true);
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success) {
         *esp = push_args_on_stack (args);
       } else {
-        palloc_free_page (kpage);
+        frame_free (kpage, true);
 
       }
       
     }
-  return success;
+
+  return true;
+}
+
+bool
+grow_stack (void *vaddr) 
+{
+  vaddr = pg_round_down (vaddr);
+  // TODO: ensure this is correct
+  if (vaddr < ((uint8_t *) PHYS_BASE) - MAX_STACK_SIZE) {
+    return false;
+  }
+
+  void *kpage = frame_alloc (PAL_ZERO, vaddr);
+  if (kpage == NULL) {
+    printf ("Couldn't grow stack: frame table is full!\n");
+    return false;
+  }
+
+  struct page *p = page_alloc_zeroed (thread_current ()->page_table, vaddr);
+  if (p == NULL) {
+    frame_free (kpage, true);
+    return false;
+  }
+  p->kpage = kpage;
+  p->writable = true;
+  p->status = IN_FRAME;
+  add_to_pages (kpage, p);
+
+  if (!install_page (p->addr, kpage, true)) {
+    frame_free (kpage, true);
+    free (p);
+    printf ("Unable to grow stack!\n");
+    return false;
+  }
+  return true;
 }
 
 static void *push_args_on_stack (const struct arguments *args) {
@@ -645,4 +687,155 @@ install_page (void *upage, void *kpage, bool writable)
      address, then map our page there. */
   return (pagedir_get_page (t->pagedir, upage) == NULL
           && pagedir_set_page (t->pagedir, upage, kpage, writable));
+}
+
+bool load_file_page (struct page *p, void *kpage) {
+
+  ASSERT (kpage != NULL);
+
+  /* Check if virtual page already allocated. */
+  struct thread *t = thread_current ();
+  uint8_t *frame = pagedir_get_page (t->pagedir, p->addr);
+      
+  if (frame == NULL){
+    /* Add the page to the process's address space. */
+    if (!install_page (p->addr, kpage, p->writable)) {
+      frame_free (kpage, true);
+      return false; 
+    }     
+
+  } else {    
+    /* Check if writable flag for the page should be updated */
+    if(p->writable && !pagedir_is_writable(t->pagedir, p->addr)){
+      pagedir_set_writable(t->pagedir, p->addr, p->writable); 
+    }      
+  }
+
+  bool file_locked = lock_held_by_current_thread (&filesys_lock);
+  if (!file_locked) {
+    lock_acquire (&filesys_lock);
+  }
+
+  /* Load data into the page. */
+  if(!load_file (kpage, p)) {
+    if (!file_locked) {
+      lock_release (&filesys_lock);
+    }
+    frame_free (kpage, true);
+    return false;
+  }
+
+  if (!file_locked) {
+    lock_release (&filesys_lock);
+  }
+
+  p->kpage = kpage;
+  p->status = IN_FRAME;
+  add_to_pages (kpage, p);
+
+  frame_set_pinned (kpage, false);
+  pagedir_set_dirty (t->pagedir, kpage, false);
+
+  return true;
+}
+
+bool
+load_page(struct hash *pt, uint32_t *pagedir, struct page *p)
+{
+  if (p->status == IN_FRAME) {
+    /* Page is already loaded. */
+    return true;
+  }
+
+  /* Obtain a frame to store the page. */
+  void *kpage = frame_alloc (PAL_USER, p->addr);
+  if (kpage == NULL) {
+    return false;
+  }
+  frame_set_pinned (kpage, true);
+
+  /* Load page data into the frame. */
+  bool writable = true;
+
+  switch (p->status)
+  {
+  case ALL_ZERO:
+    /* Zeroed out page. */
+    memset (kpage, 0, PGSIZE);
+    break;
+
+  case IN_FRAME:
+    /* Page already loaded to frame, nothing more to do. */
+    /* TODO: return false or true? */
+    break;
+
+  case SWAPPED:
+    /* Swap in: load the data from the swap disc. */
+    ASSERT ((int) p->swap_slot != -1);
+    swap_in (kpage, p->swap_slot);
+    add_to_pages (kpage, p);
+    p->status = IN_FRAME;
+    break;
+
+  case FILE:
+  case MMAPPED:
+    /* Load page from file into allocated frame. */
+    if (!file_share_page (p)) {
+      return load_file_page (p, kpage);
+    }
+    load_page (pt, pagedir, p);
+    return;
+
+  default:
+    ASSERT (false);
+  }
+
+  /* Point the page table entry for the faulting virtual address to the physical page. */
+  if (!install_page (p->addr, kpage, writable)) {
+     frame_free (kpage, true);
+     return false;
+  }
+
+  /* Set SPTE data to point to the allocated kpage. */
+  p->kpage = kpage;
+  p->status = IN_FRAME;
+  
+  frame_set_pinned (kpage, false);
+  pagedir_set_dirty (pagedir, kpage, false);
+
+  return true;
+}
+
+bool file_share_page (struct page *p) {
+  if (p->kpage != NULL) {
+    return false;
+  }
+
+  // search page table for page pointing to same file 
+  struct hash *pt = thread_current ()->page_table;
+  struct page *temp = malloc (sizeof (struct page));
+  struct hash_elem *e;
+  temp->file = p->file;
+  temp->offset = p->offset;
+  e = hash_find (pt, &temp->hash_elem);
+  free (temp);
+  if (e == NULL) {
+    /* No corresponding file in pt to share with */
+    return false;
+  }
+
+  struct page *s = hash_entry (e, struct page, hash_elem);
+  ASSERT (s != NULL);
+
+  page_install_frame (pt, p->addr, s->kpage);
+
+  add_to_pages (s->kpage, p);
+
+  if (s->status == IN_FRAME) {
+    return true;
+  } else {
+    p->status = s->status;
+    printf ("SHARED PAGE IS NOT IN FRAME\n");
+    return true;
+  }
 }

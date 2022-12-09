@@ -32,6 +32,11 @@
 #else
 #include "tests/threads/tests.h"
 #endif
+#ifdef VM
+#include "vm/frame.h"
+#include "devices/swap.h"
+#include "userprog/mapId.h"
+#endif
 #ifdef FILESYS
 #include "devices/block.h"
 #include "devices/ide.h"
@@ -89,6 +94,7 @@ main (void)
   /* Initialize ourselves as a thread so we can use locks,
      then enable console locking. */
   file_init();
+  mmap_init();
   thread_init ();
   console_init ();  
 
@@ -128,6 +134,13 @@ main (void)
   ide_init ();
   locate_block_devices ();
   filesys_init (format_filesys);
+#endif
+
+#ifdef VM
+  /* Initialise the swap disk */  
+  swap_init ();
+  frame_table_init ();
+  mmap_init ();
 #endif
 
   printf ("Boot complete.\n");

@@ -301,6 +301,13 @@ hash_int (int i)
   return hash_bytes (&i, sizeof i);
 }
 
+/* Returns a hash of pointer P */
+unsigned
+hash_ptr (const void *p)
+{
+  return hash_bytes (&p, sizeof p);  
+}
+
 /* Returns the bucket in H that E belongs in. */
 static struct list *
 find_bucket (struct hash *h, struct hash_elem *e) 

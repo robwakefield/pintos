@@ -71,5 +71,12 @@ swap_in (void *vaddr, size_t slot)
     block_read (swap_device, sector + i, vaddr + i * BLOCK_SECTOR_SIZE);
   
   // clear the swap-slot previously used by this page
-  bitmap_reset (swap_bitmap, slot / PAGE_SECTORS);
+  swap_drop (slot);
+}
+
+/* Clears the swap-slot SLOT so that it can be used for another page */
+void
+swap_drop (size_t slot)
+{
+  bitmap_reset (swap_bitmap, slot);
 }

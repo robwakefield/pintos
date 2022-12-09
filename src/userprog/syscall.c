@@ -12,35 +12,16 @@
 #include "filesys/filesys.h"
 #include "threads/palloc.h"
 #include "userprog/syscall.h"
+#include "userprog/fdTable.h"
+#include "userprog/mapId.h"
 
 static void syscall_handler (struct intr_frame *);
 static void (*syscall_handlers[20]) (struct intr_frame *);     /* Array of function pointers so syscall handlers. */
 void exit_with_code (int);
-static void *valid_pointer (void *);
-
-struct fdTable{
-  int tid;
-  int tabNum;
-  struct list_elem elem;
-  struct fdTable *nextTable;
-  struct fdTable *prevTable;
-  struct fdPage *page;
-  int free;
-  struct file * table[FD_SIZE];
-};
-
-struct fdPage{
-  struct list_elem elem;
-  int free;
-  struct fdTable tables[FD_NUM];
-};
+static void *valid_pointer (void *, struct intr_frame *, bool);
 
 void *get_argument (struct intr_frame *f, int i);
-void closeProcess (int);
-int assign_fd (struct file *);
-void remove_fd (int);
-void freeTable (struct fdTable *);
-void cleanFileMemory (struct fdTable *);
+
 
 /* System call handler functions. */
 void syscall_halt (struct intr_frame *);
@@ -56,9 +37,8 @@ void syscall_write (struct intr_frame *);
 void syscall_seek (struct intr_frame *);
 void syscall_tell (struct intr_frame *);
 void syscall_close (struct intr_frame *);
-
-/* Lock for the file system, ensures multiple processes cannot edit file at the same time. */
-struct lock filesys_lock;
+void syscall_mmap (struct intr_frame *f);
+void syscall_munmap (struct intr_frame *f);
 
 void
 syscall_init (void) 
@@ -80,11 +60,14 @@ syscall_init (void)
   syscall_handlers[SYS_SEEK] = &syscall_seek;
   syscall_handlers[SYS_TELL] = &syscall_tell;
   syscall_handlers[SYS_CLOSE] = &syscall_close;
+  syscall_handlers[SYS_MMAP] = &syscall_mmap;
+  syscall_handlers[SYS_MUNMAP] = &syscall_munmap;
 }
 
 static void
 syscall_handler (struct intr_frame *f) 
 {
+  thread_current ()->esp = f->esp;
   /* Call appropriate system call function from system calls array. */
   int syscall_num = *(int *) valid_pointer (f->esp);
 
@@ -100,6 +83,19 @@ void *valid_pointer (void *p)
 {
   if (!is_user_vaddr (p) || pagedir_get_page (thread_current ()->pagedir, p) == NULL) {
     exit_with_code (-1);
+  }
+  thread_current ()->esp = f->esp;
+  if (write) {
+    int b = get_user (p);
+    if (b == -1 || !put_user (p, b)) {
+      //printf("exiting: bad write\n");
+      exit_with_code (-1);
+    }
+  } else {
+    if (get_user (p) == -1) {
+      //printf("exiting: bad read\n");
+      exit_with_code (-1);
+    }
   }
   return p; 
 }
@@ -139,215 +135,10 @@ syscall_wait (struct intr_frame *f) {
 }
 
 
-static struct list file_list;
-static struct list file_page_list;
 
-void file_init(){
-  list_init(&file_list);
-  list_init(&file_page_list);
-}
 
-static struct fdPage *newFilePage(void){
-  struct fdPage *page = palloc_get_page(PAL_ZERO);
-  if(&page->elem == NULL){
-    return NULL;
-  }
-  list_push_back(&file_page_list,&page->elem);
-  page->free = FD_NUM;
-  return page;
-}
-static void init_table(struct fdTable *table,int tid, struct fdPage *page){
-  table->tid = tid;
-  table->tabNum = 0;
-  table->nextTable = NULL;
-  table->free = FD_SIZE;
-  table->elem.prev = NULL;
-  table->elem.next = NULL;
-  table->page = page;
-  table->prevTable = NULL; 
-  memset(&(table->table),0,sizeof(table->table));
-  page->free -= 1;
-}
-static struct fdTable* newFileTable(int tid){
-  struct list_elem *e;
-  for (e = list_begin (&file_page_list); e != list_end (&file_page_list); e = list_next (e)){
-    struct fdPage *page = list_entry(e,struct fdTable, elem);
-    if(page->free > 0){
-      for(int i = 0; i<FD_NUM;i++){
-        struct fdTable *table = &(page->tables[i]);
-        if (table->tid == 0){          
-          init_table(table,tid,page);
-          return &table;
-        }
-      }
-    }
-  }
-  struct fdPage *page = newFilePage();
-  if (page == NULL) {
-    return NULL;
-  }
-  struct fdTable *table = &(page->tables[0]);
-  init_table(table,tid,page);
-  return table;
-}
 
-static struct fdTable* tidFileTable(int tid){
-  struct list_elem *e;
-  for (e = list_begin (&file_list); e != list_end (&file_list); e = list_next (e)){
-    struct fdTable *table = list_entry(e,struct fdTable, elem);
-    if(table->tid == tid){
-      return table;
-    }
-  }
-  return NULL;
-}
 
-static int maxFileTab = 5;
-
-static struct fdTable* extendFDTable(struct fdTable* table){
-  ASSERT(table != NULL);
-  if(table->tabNum == maxFileTab){
-    return NULL;
-  }
-
-  struct fdTable *newTable = newFileTable(thread_current());
-  if (newTable == NULL) {
-    return NULL;
-  }
-  table->nextTable = newTable;
-  newTable -> prevTable = table;
-  newTable->tabNum = table->tabNum + 1;
-  return newTable;
-}
-
-int assign_fd(struct file *file){
-  int fd = 2;
-  struct fdTable *table = tidFileTable(thread_current());
-  if(table == NULL){
-    table = newFileTable(thread_current());
-    if(table == NULL){
-      return -1;
-    }
-    table->tabNum = 0;
-    list_push_back(&file_list,&(table->elem));
-  }
-  ASSERT(table!=NULL);
-  while(true){
-    if(table->free > 0){
-      for (int i = 0; i < FD_SIZE; i++) {
-        if (table->table[i] == NULL) {
-          table->table[i] = file;
-          table->free -= 1;
-          return fd + i;
-        }
-      }
-    }
-    if(table->nextTable == NULL){
-        break;
-      }
-    fd += FD_SIZE;
-    table = table->nextTable;
-  }
-  
-  struct fdTable *tableT = extendFDTable(table);
-  if (tableT == NULL){
-    return -1;
-  }
-  tableT->table[0] = file;
-  return fd;
-}
-
-struct file* fd_to_file(int i){
-  int fd = i - 2;
-  if(fd < 0){
-    return NULL;
-  }
-  for(struct fdTable *table = tidFileTable(thread_current());(table != NULL);table = table->nextTable){
-    if(fd < FD_SIZE){
-      return table->table[fd];
-    }
-    fd -= FD_SIZE;
-  }
-  return NULL;
-}
-
-void freeTable(struct fdTable *table){
-  if(table == NULL){
-    return;
-  }
-  if(table->free == FD_SIZE && table->nextTable == NULL){
-    struct fdTable *prev = table->prevTable;
-    table->page->free += 1;
-    table->prevTable = NULL;
-    if(table->tabNum == 0){
-      list_remove(&table->elem);
-    }
-    if(table->page->free == FD_NUM){
-      list_remove(&table->page->elem);
-      palloc_free_page(table->page);
-    }else{
-      memset (table,0,sizeof(struct fdTable));
-      cleanFileMemory(table);
-    }
-    if(prev != NULL){
-      prev->nextTable = NULL;
-      freeTable(prev);
-    }
-  }
-}
-
-void cleanFileMemory(struct fdTable *table){
-  struct fdPage *page = list_entry(list_end(&file_page_list),struct fdPage, elem);
-  struct fdTable *endTable;
-  for (int i = 0; i < FD_NUM; i++){
-    endTable = &page->tables[i];
-    if(endTable->tid != 0){
-      *table = *endTable;
-      if(table->prevTable != NULL){
-        table->prevTable->nextTable = table;
-      }
-      if(table->nextTable != NULL){
-        table->nextTable->prevTable = table;
-      }
-      freeTable(endTable);
-      return;
-    }
-  }
-}
-
-void remove_fd(int i){
-  int fd = i - 2;
-  if(fd < 0){
-    return;
-  }
-  for(struct fdTable *table = tidFileTable(thread_current());(table != NULL);table = table->nextTable){
-    if(fd < FD_SIZE){
-      table->table[fd] = NULL;
-      table->free += 1;
-      freeTable(table);
-      return;
-    }
-    i -= FD_SIZE;
-  }
-}
-
-void closeProcess(int tid){
-  struct fdTable *table;
-  for(table = tidFileTable(tid);(table != NULL);){
-    for(int i = 0; i < FD_SIZE && table->free < FD_SIZE ;i++){
-      if (table->table[i] != NULL){
-        file_close(table->table[i]);
-        table->table[i] = NULL;
-        table->free += 1;
-      }
-    }    
-    if (table->nextTable == NULL) {
-      freeTable(table);
-      return;
-    }
-    table = table->nextTable;
-  }
-}
 
 
 
@@ -499,3 +290,87 @@ syscall_close (struct intr_frame *f) {
     lock_release (&filesys_lock);
   }
 }
+
+void syscall_mmap (struct intr_frame *f){
+  
+  int fd = *(int*) get_argument (f, 0);
+  void *addr =  *(void**)get_argument (f, 1);
+  if(fd == 0 || fd == 1 || addr == 0 || (((int) addr) % PGSIZE) != 0 || f->esp< addr+PGSIZE){
+    f->eax = -1;
+    return;
+  }
+  
+  struct file *file = fd_to_file(fd);
+  if(file == NULL){
+    f->eax = -1;
+    return;
+  }
+  struct file *newFile = file_reopen(file);
+  if(newFile == NULL){
+    f->eax = -1;
+    return;
+  }
+  int size = file_length(newFile);
+  if(size == 0){
+    f->eax = -1;
+    return;
+  }
+  int i;
+  uint32_t read_bytes;
+  uint32_t zero_bytes;
+  for( i = 0; i < size; i = i + PGSIZE){
+    if (i+PGSIZE < size){
+      read_bytes = PGSIZE;
+      zero_bytes = 0;
+    }else{
+      read_bytes = size - i;
+      zero_bytes = PGSIZE - read_bytes;
+    }
+    
+    if(! page_alloc_mmap(thread_current ()->page_table,addr + i,newFile,i,read_bytes,zero_bytes,true)){
+      f->eax = -1;
+      for(i = i - PGSIZE; i >0; i = i - PGSIZE){ 
+        page_dealloc(thread_current ()->page_table,addr + i);
+      }
+      return;
+    }
+  }
+  f->eax = assign_mapId(addr);
+}
+
+//void munmap (mapid_t mapid) 
+void syscall_munmap (struct intr_frame *f){
+  lock_acquire(&filesys_lock);
+  int mapid = *(int*) get_argument (f, 0);
+  unmmap(mapid);
+  remove_mapId(mapid);
+  lock_release(&filesys_lock);
+  
+}
+
+void unmmap (int mapid){
+  
+  void *addr = mapId_to_file(mapid);
+  struct page *page = page_lookup (thread_current ()->page_table, addr);
+  struct file *file = page->file;
+  int size = file_length(file);
+  for(int i = 0; i < size; i = i + PGSIZE){
+    struct page *page = page_lookup (thread_current ()->page_table, addr+i);
+    file_seek(page->file,page->offset);
+    if(page->status == IN_FRAME && pagedir_is_dirty(page->owner->pagedir,page->addr)){ 
+      
+      file_write(page->file,page->addr,page->read_bytes);
+      
+    }
+    page_dealloc(thread_current ()->page_table,page);
+    
+  }
+  
+  
+}
+
+
+
+
+
+
