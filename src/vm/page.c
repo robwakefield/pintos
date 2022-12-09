@@ -40,7 +40,7 @@ page_destroy (struct hash_elem *e, void *aux UNUSED)
 
   if (p->status == IN_FRAME) {
     ASSERT (p->kpage != NULL);
-    frame_free (p->kpage, false);
+    frame_free (p->kpage, true);
   } else if (p->status == SWAPPED){
     //TODO: swap_drop
     ASSERT ((int) p->swap_slot != -1);
@@ -85,12 +85,6 @@ page_lookup (struct hash *pt, const void *addr)
 
   temp->addr = pg_round_down (addr);
   e = hash_find (pt, &temp->hash_elem);
-
-  if (e == NULL) {
-    //printf ("ERROR: hash_find returned null -> page is not in page table\n");
-  } else {
-    //printf("(page)hash found in page table\n");
-  }
 
   free (temp);
   return e != NULL ? hash_entry (e, struct page, hash_elem) : NULL;
@@ -242,7 +236,7 @@ load_file (void *kpage, struct page *p)
   
   ASSERT (p->read_bytes + p->zero_bytes == PGSIZE);
   memset (kpage + p->read_bytes, 0, p->zero_bytes);
-  
+
   return true;
 }
 

@@ -48,7 +48,7 @@ process_execute (const char *file_name)
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = frame_alloc (0, NULL);
-  
+
   if (fn_copy == NULL)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
@@ -607,6 +607,7 @@ grow_stack (void *vaddr)
   p->kpage = kpage;
   p->writable = true;
   p->status = IN_FRAME;
+  add_to_pages (kpage, p);
 
   if (!install_page (p->addr, kpage, true)) {
     frame_free (kpage, true);
@@ -707,6 +708,7 @@ bool load_file_page (struct page *p, void *kpage) {
 
   p->kpage = kpage;
   p->status = IN_FRAME;
+  add_to_pages (kpage, p);
 
   frame_set_pinned(kpage, false);
   pagedir_set_dirty (t->pagedir, kpage, false);
@@ -747,6 +749,7 @@ load_page(struct hash *pt, uint32_t *pagedir, struct page *p)
     /* Swap in: load the data from the swap disc. */
     ASSERT ((int) p->swap_slot != -1);
     swap_in (kpage, p->swap_slot);
+    add_to_pages (kpage, p);
     p->status = IN_FRAME;
     break;
 
@@ -800,21 +803,10 @@ bool file_share_page (struct page *p) {
   struct page *s = hash_entry (e, struct page, hash_elem);
   ASSERT (s != NULL);
 
-  // lock_acquire (&filesys_lock);
-  // /* Load data into the page. */
-  // if(!load_file (kpage, p)) {
-  //   lock_release (&filesys_lock);
-  //   frame_free (kpage, true);
-  //   return false;
-  // }
-  // lock_release (&filesys_lock);
-
-  // p->kpage = kpage;
-  // p->status = IN_FRAME;
-  // // TODO: check if correct
-  // pagedir_set_dirty (t->pagedir, kpage, false);
-
   page_install_frame (pt, p->addr, s->kpage);
+
+  add_to_pages (s->kpage, p);
+
   if (s->status == IN_FRAME) {
     return true;
   } else {

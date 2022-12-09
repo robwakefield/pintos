@@ -47,11 +47,11 @@ frame_less_func (const struct hash_elem *e1, const struct hash_elem *e2, void *a
 /* Creates a new frame table entry, which stores the address of the frame, 
 the process that owns the frame. */
 struct frame_entry *
-create_entry (void *frame) {
+create_entry (void) {
   struct frame_entry *f = malloc (sizeof (struct frame_entry));
+  list_init(&f->pages);
 
   f->owner = thread_current ();
-  f->frame_address = frame;
   
   return f;
 }
@@ -75,9 +75,7 @@ frame_free (void *frame, bool free_page) {
   
   lock_acquire (&frame_table_lock);
 
-  struct frame_entry *temp_entry = search_elem (frame);
-  struct hash_elem *to_remove = hash_find (frame_table, &temp_entry->hash_elem);
-  free (temp_entry); 
+  struct frame_entry *to_remove = frame_find (frame);
 
   ASSERT (to_remove != NULL);
 
@@ -88,6 +86,7 @@ frame_free (void *frame, bool free_page) {
     hash_delete (frame_table, &f->hash_elem);
     list_remove (&f->list_elem);
     frames_in_list -= 1;
+
     if (free_page) {
        palloc_free_page (frame);
     }
@@ -108,12 +107,12 @@ frame_alloc (enum palloc_flags flags, void *upage) {
 
     /* Allocate after page eviction -> should succeed in this chance. */
     f_page = palloc_get_page (PAL_USER | flags);
-    ASSERT (f_page != NULL);;
+    ASSERT (f_page != NULL);
   }
 
   lock_acquire(&frame_table_lock);
 
-  struct frame_entry *new_frame = malloc (sizeof (struct frame_entry));
+  struct frame_entry *new_frame = create_entry ();
   ASSERT (new_frame != NULL);
 
   lock_acquire (&frame_list_lock);
@@ -127,17 +126,12 @@ frame_alloc (enum palloc_flags flags, void *upage) {
   }
   frames_in_list += 1;
   lock_release (&frame_list_lock);
-  
-  struct thread *t = thread_current ();
 
   /* Sets new page information (both for page-in and page replacement). */
-  new_frame->owner = t;
   new_frame->frame_address = f_page;
   new_frame->upage = upage;
-  
-  /* Pin frame until page loaded -> synchronises while loading page data into the frame. */
-  new_frame->pinned = true;
 
+  struct thread *t = thread_current ();
   if (upage != NULL) {
     pagedir_set_accessed (t->pagedir, upage, true);
     pagedir_set_accessed (t->pagedir, f_page, true);
@@ -149,6 +143,7 @@ frame_alloc (enum palloc_flags flags, void *upage) {
   }
 
   ASSERT (hash_insert (frame_table, &new_frame->hash_elem) == NULL);
+  new_frame->pinned = true;
 
   lock_release (&frame_table_lock);
 
@@ -171,7 +166,7 @@ eviction (void) {
       /* Frame is pinned, cannot evict. Move on to next frame. */
       clock_hand_move ();
       continue;
-    } 
+    }
   
     if (pagedir_is_accessed (frame->owner->pagedir, frame->upage)) {
       /* Referenced bit set -> give second chance and move clock pointer. */
@@ -181,15 +176,18 @@ eviction (void) {
       
     } else {
       /* Referenced bit not set -> evict page. */
-      struct page *p = page_lookup (frame->owner->page_table, frame->upage);
-      ASSERT (p != NULL);
+      lock_acquire (&frame->pages_lock);
+      for (e = list_begin (&frame->pages); e != list_end (&frame->pages); e = list_next (e)) {
+        struct page *p = list_entry (e, struct thing, elem);
+        ASSERT (p != NULL);
 
-      /* Swap out page. */
-      p->swap_slot = swap_out (p->kpage);
-      p->kpage = NULL;
-      p->status = SWAPPED;
-      pagedir_clear_page (frame->owner->pagedir, p->addr);
-      
+        /* Swap out page. */
+        p->swap_slot = swap_out (p->kpage);
+        p->kpage = NULL;
+        p->status = SWAPPED;
+        pagedir_clear_page (p->owner, p->addr);
+      }
+      lock_release (&frame->pages_lock);
 
       /* Remove frame. */
       clock_hand_move ();
@@ -264,4 +262,22 @@ frame_set_pinned (void *kpage, bool pinned)
   f->pinned = pinned;
 
   lock_release (&frame_table_lock);
+}
+
+struct frame_entry *
+frame_find (void *kpage) {
+  struct frame_entry *temp_entry = search_elem (kpage);
+  struct hash_elem *e = hash_find (frame_table, &temp_entry->hash_elem);
+  free (temp_entry); 
+
+  return e != NULL ? hash_entry (e, struct frame_entry, hash_elem) : NULL;
+}
+
+void
+add_to_pages (void *kpage, struct page *p) {
+  struct frame_entry *f = frame_find (kpage);
+
+  if (p != NULL && f != NULL) {
+    list_push_back (&f->pages, &p->list_elem);
+  }
 }

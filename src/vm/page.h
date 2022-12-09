@@ -10,7 +10,6 @@
 #include "threads/synch.h"
 #include <list.h>
 
-
 enum page_status
   {
     ALL_ZERO,       /* Zeroed page (new page). */
@@ -30,7 +29,8 @@ struct page
 
     enum page_status status;
 
-    struct hash_elem hash_elem; 
+    struct hash_elem hash_elem;
+    struct list_elem list_elem;
 
     /* Set only in owning process context with frame->frame_lock held.
        Cleared only with scan_lock and frame->frame_lock held. */
@@ -41,8 +41,7 @@ struct page
     uint32_t read_bytes;           /* Bytes to read/write, 1...PGSIZE. */
     uint32_t zero_bytes;         
 
-    size_t swap_slot;  
-    struct list_elem list_elem;
+    size_t swap_slot;
   };
 
 unsigned page_hash (const struct hash_elem *e, void *aux UNUSED);
@@ -64,7 +63,7 @@ bool page_install_frame (struct hash *pt, void *upage, void *kpage);
 
 bool load_file (void *kpage, struct page *p);
 
-bool
-page_munmap(struct hash *pt, uint32_t *pagedir, void *upage, struct file *f, off_t offset, size_t bytes);
+void
+page_to_disk (struct page *p, void *kpage);
 
 #endif /* vm/page.h */
