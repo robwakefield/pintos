@@ -589,13 +589,12 @@ grow_stack (void *vaddr)
   vaddr = pg_round_down (vaddr);
   // TODO: ensure this is correct
   if (vaddr < ((uint8_t *) PHYS_BASE) - MAX_STACK_SIZE) {
-    printf ("STACK IS TOO BIG!\n");
     return false;
   }
 
-  void *kpage = frame_alloc (PAL_ZERO, vaddr); // TODO: free this somewhere
+  void *kpage = frame_alloc (PAL_ZERO, vaddr);
   if (kpage == NULL) {
-    printf ("Couldn't grow stack: eviction needs implementing\n");
+    printf ("Couldn't grow stack: frame table is full!\n");
     return false;
   }
 
@@ -611,7 +610,7 @@ grow_stack (void *vaddr)
   if (!install_page (p->addr, kpage, true)) {
     frame_free (kpage, true);
     free (p);
-    printf ("Unable to grow stack!?\n");
+    printf ("Unable to grow stack!\n");
     return false;
   }
   return true;
