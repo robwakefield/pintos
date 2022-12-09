@@ -93,9 +93,9 @@ frame_free (void *kpage, bool free_page) {
 
       if (p->owner == thread_current ()) {
         e = list_remove (&p->list_elem);
-        //TODO: free the page table entry?
         if (p->kpage == kpage) {
           page_dealloc(thread_current ()->page_table, p);
+          return;
         }
       } else {
         e = list_next (e);
@@ -179,6 +179,9 @@ eviction (enum palloc_flags flags) {
   lock_acquire (&frame_table_lock);
 
   while (!evicted) {
+    if (clock_ptr == NULL) {
+      clock_hand_move ();
+    }
     ASSERT (clock_ptr != NULL);
     frame = list_entry (clock_ptr, struct frame_entry, list_elem);
 
@@ -216,9 +219,9 @@ eviction (enum palloc_flags flags) {
       lock_release (&frame_table_lock);
       frame_free (frame->frame_address, true);
 
-      /* Allocate after page eviction -> should succeed in this chance. */
       void *f_page = palloc_get_page (PAL_USER | flags);
       evicted = (f_page != NULL);
+      palloc_free_page (f_page);
     }
   }
   return evicted;

@@ -9,8 +9,8 @@
 >> Fill in the names and email addresses of your group members.
 
 Rob Wakefield <rgw20@ic.ac.uk>
-FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
+Nada Struharova <ns2321@ic.ac.uk>
+Harrison Barker <hb321@ic.ac.uk>
 
 ---- PRELIMINARIES ----
 
@@ -32,11 +32,81 @@ FirstName LastName <email@domain.example>
 >> supplemental page table and frame table. 
 >> Identify the purpose of each in roughly 25 words.
 
+FRAME TABLE MANAGEMENT:
+
+	/* A hash table to store all allocated frames. */
+	static struct hash *frame_table;
+
+	/* A global frame table lock. */
+	static struct lock frame_table_lock;
+
+	/* Pointer for the first clock hand in page replacement. */
+	static struct list_elem *clock_ptr;
+	/* Pointer for the second (resetting) clock hand in page replacement. */
+	static struct list_elem *reset_ptr;]
+
+  struct frame_entry
+  {
+    /* Physical address of the frame. */
+    void *frame_address;
+    /* Address of virtual page loaded into the frame. */
+    void *upage;
+
+    /* List of pages referencing the frame. */
+    struct list pages;
+    /* Synchronisation primitive for accessing the list of pages. */
+    struct lock pages_lock;
+
+    /* Set if frame is pinned -> not to be evicted. */
+    bool pinned;
+    /* Owner thread of the frame. */
+    struct thread *owner;
+
+    struct hash_elem hash_elem;
+    struct list_elem list_elem;
+  };
+
+PAGE TABLE MANAGEMENT:
+	
+	/* Enumeration for keeping track of what type of page we are dealing with at page fault.*/
+	enum page_status
+  {
+    ALL_ZERO,		/* Zeroed page (new page). */
+    IN_FRAME,		/* Frame allocated to page. */
+    SWAPPED,		/* Page is swapped (in swap slot). */
+    FILE,			/* Page is to be loaded from a file. */
+    MMAPPED   		/* Memory mapped page. */ 		
+  };
+
+	/* Supplemental page table entry. */
+	struct page 
+	{
+    void *addr;			/* User virtual address. */
+    bool writable;		/* Read-only page? */
+    bool dirty;
+    struct thread *owner;	/* Owning thread. */
+
+    enum page_status status; /* Type of page - from enumeration declared above. */
+
+    void *kpage;             /* Physical address of frame allocated to the page. */
+
+    struct file *file;       /* File. */
+    off_t offset;            /* Offset in file. */
+    uint32_t read_bytes;	/* Bytes to read, 1...PGSIZE. */
+    uint32_t zero_bytes;     /* PGSIZE - read_bytes. */   
+
+    size_t swap_slot;		/* Swap slot used by page (set to -1 if page is not swapped). */
+		struct hash_elem hash_elem; 
+    struct list_elem list_elem;
+	};
+
+
 ---- ALGORITHMS ----
 
 >> A2: (2 marks) 
 >> Describe your code for finding the frame (if any) or other location that 
 >> contains the data of a given page.
+
 
 >> A3: (2 marks)
 >> How have you implemented sharing of read only pages?
@@ -51,7 +121,7 @@ When a read only page is attempted to be loaded, we first check whether we can s
 >> You should consider both when there are and are not free frames 
 >> available in memory.
 
-Lock on the frame table.
+We use a global lock over the frame table to ensure synchronization while obtaining a new frame. The lock spans over the critical section inside our function for allocating frames, where we obtain a new frame. This frame will be pinned right after being allocated and remain pinned until we fnish loading the page into it. This ensures that the frame will not be evicted while we are in the process of loading data into it, therefore the frame will not be accessed or allocated to another thread / page during this process.
 
 ---- RATIONALE ----
 
@@ -59,7 +129,8 @@ Lock on the frame table.
 >> Why did you choose the data structure(s) that you did for representing the
 >> supplemental page table and frame table?
 
-Hash.
+We chose to use the hash table structure provided for our implementation of the global frame table and the per-thread (local) supplemental page table. Hash table does not allow duplicates, hence it helps our code gain more security by detecting duplicate page errors for the page table. Both tables can also grow quite large and this structure provides constant lookup time making searching an element more efficient once the table gets big.
+
 
                PAGING TO AND FROM DISK
                =======================
@@ -72,17 +143,53 @@ Hash.
 >> swap table.  
 >> Identify the purpose of each in roughly 25 words.
 
+/* List of frames used for implementing the two-handed clock page replacement algorithm. */
+static struct list frame_list;
+
+/* A global frame list lock. */
+static struct lock frame_list_lock;
+
+All other members were provided in swap.c/swap.h.
+
 ---- ALGORITHMS ----
 
 >> B2: (2 marks)
 >> When a frame is required but none is free, some frame must be evicted.
 >> Describe your code for choosing a frame to evict.
 
+For frame eviction, we implemented the two-handed clock algorithm. The two separate "hands" of this algorithm are implemented as pointers to list elements, clock_ptr and reset_ptr, of the frame_list. 
+Whenever a frame is allocated, we
+1. add this frame to our frame_list
+2. set its reference bit to true
+3. move the clock_ptr (the first clock hand) to point to (an imaginary) next free frame
+
+Our frame_list implementation simulates a circular list of free frames, with the size of this list being determined by when using palloc_get_page first fails to allocate a new frame. 
+
+Once a frame is required but none is free, we start the eviction process. 
+1. Examine the frame that is currently being pointed to by clock_ptr
+	(a) If this frame is pinned, it cannot be evicted and we move on to the next frame in the list.
+	(b) If its reference bit is set, we set it to false and move on to the next frame in the list, 
+		giving the current frame a second chance to stay on the frame list.
+	(c) If its reference bit is not set, we choose this frame as the victim of our eviction 
+		and we deallocate it. 
+2. If no frame was chosen for eviction, move the clock_ptr to the next frame and repeat step 1)
+
+The purpose of the second clock hand, reset_ptr, is to clear the reference bits of pages. After some successful allocations of frames, we start the reset_ptr at the beginning of the list. From this point forwards, both pointers are advanced simultaneously.
+
+With each move, the reset_ptr:
+1. Clears the reference bit of the frame (page) currently being pointed to
+2. Pointer is moved to the next frame
+
+In one-handed clock page replacement algorithm, there is a problem when a page is only used for a small amount right after it is first fetched. This means that the "second chance" would require two "fifo" cycles before that page gets evicted. In two-handed clock implementation, these pages can get evicted after one "fifo" cycle, which significantly shortens the time they occupy a frame without actually being used. 
+
+In choosing how big a gap we should have between the first hand and the second (resetting) hand of the algorithm, we discussed what implications it would have. If these pointers were closer, only recently used pages would survive in memory. On the other hand, if the pointers were far apart, only pages that have not been used for a long time would get evicted. In our implementation, we decided to set the pointers further apart. This way we avoid evicting recently installed pages but make sure we do not keep pages in memory much longer than necessary.
+
 >> B3: (2 marks)
 >> When a process P obtains a frame that was previously used by a process Q,
 >> how do you adjust the page directory of process Q (and any other data 
 >> structures) to reflect the frame Q no longer has?
 
+We frist use pagedir_clear_page to clear the mapping of the page from the owner thread's pagedir so that the page cannot be accessed anymore. Next we unload the contents of each page (traversin the list of pages referencing this frame) either back to the disk or to swap. Lastly, we remove the frame table entry for Q from the frame table and later add the frame table entry for P. We do not check if the frame pointer is the same, as the new frame is allocated by palloc_get_page, however the supplemental page table mapped to it will now contain P's info instead of Q's.
 
 
 ---- SYNCHRONIZATION ----
@@ -91,15 +198,29 @@ Hash.
 >> Explain how your synchronization design prevents deadlock.  
 >> (You may want to refer to the necessary conditions for deadlock.)
 
+The supplemental page table is a per-thread structure, as the current thread only amends its own supplemental page table of the pages it owns, there should be no race conditions.
+As the frame table is a global structure, we decided to synchronise access to it using a lock. Whenever the frame table is modified, the current thread acquires the lock. It is used in every critical section - frame eviction, frame pinning, frame table entry creation, insertion and deletion. Thus making sure two threads cannot be in those critical sections concurrently. To avoid the race condition in the case when process P might evict process Q's page when there is no free frame, we used a "pinning" flag. While loading a page into a frame, we also pin the frame until the page is successfully loaded. This ensures that the frame is not considered for eviction while a process is loading the page into it.
+We also use separate locks (per frame entry) for the list of pages referencing a frame and one for the list of allocated frames used for eviction. These ensure that the access to all linked lists used is synchronised and race conditions are avoided.
+As for deadlocks, we tried to make sure that we do not acquire multiple locks at the same time.
+For example during the frame eviction phase. We first acquire the frame_table_lock, and if the evicting page is dirty, we may acquire the file system lock to write back the memory mapped file type page. However, the order of acquiring these locks stays the same among all processes encountering this situation, thus there should be no scenario for a deadlock arising in these conditions.
+
 >> B5: (2 marks)
 >> A page fault in process P can cause another process Q's frame to be evicted.
 >> How do you ensure that Q cannot access or modify the page during the 
 >> eviction process?
 
+While P is evicting Q's frame it is still valid for Q to access its frame until the mapping is cleared from the thread's pagedir. After that mapping is cleared, process Q will no longer be able to access or modify the page as there will be no such entry in the pagedir - resulting in a page fault which will try to allocate a new frame. If eviction is required in the frame allocation process, syncrhonization is ensured by the lock in eviction algorithm being acquired by P until it finishes. In the eviction process, P will make the frame
+available again when the frame structure is freed (as part of the eviction).
+
+
 >> B6: (2 marks)
 >> A page fault in process P can cause another process Q's frame to be evicted.
 >> How do you avoid a race between P evicting Q's frame and Q faulting the page
 >> back in?
+
+When a page fault occurs, we need to load the faulted page into memory. When the
+loading starts, using the load_page function, we first obtain a new frame which gets pinned. As the frame stays until the loading is finished, it cannot be considered for eviction during that time. Therefore, Q won't be able
+to evict that frame.
 
 >> B7: (2 marks)
 >> Explain how you handle access to user pages that are not present when a
@@ -114,6 +235,8 @@ When we check that a pointer in a system call is valid, we check whether we can 
 >> synchronisation methods. 
 >> Explain where your design falls along this continuum and why you chose to 
 >> design it this way.
+
+We chose to implement course grained locking of our frame table. This was to ensure that we did not miss any complex race conditions that could arise form a finer grained approach. This will lead to a decrease in performance when many processes are accessing the frame table at once, but given the limitation of the pintos os we thought that this was a reassonable trade off. We chose not to lock the page table as there will be no race conditions due to the page table only ever being accessed by the thread which owns it. Overall we chose to provide a very safe synchronisation strategy even though it may not be the most parallel in order to best suit the pintos os limitations and maintain solid memory safety.
 
              MEMORY MAPPED FILES
              ===================
