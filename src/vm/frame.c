@@ -79,9 +79,7 @@ frame_free (void *frame, bool free_page) {
 
   ASSERT (to_remove != NULL);
 
-  //remove page
 
-  // TODO: check this
   if (to_remove != NULL) {
     /* Deallocate the frame table entry. */
     struct frame_entry *f = hash_entry (to_remove, struct frame_entry, hash_elem);
@@ -145,7 +143,7 @@ frame_alloc (enum palloc_flags flags, void *upage) {
   }
 
   ASSERT (hash_insert (frame_table, &new_frame->hash_elem) == NULL);
-  new_frame->pinned = true;
+  new_frame->pinned = false;
 
   lock_release (&frame_table_lock);
 
@@ -154,7 +152,7 @@ frame_alloc (enum palloc_flags flags, void *upage) {
 
 bool
 eviction (void) {
-  /* Page allocation faied -> choose page to evict. */
+  /* Page allocation failed -> choose page to evict. */
   bool evicted = false;
   struct frame_entry *frame;
 
@@ -193,13 +191,14 @@ eviction (void) {
 
       /* Remove frame. */
       clock_hand_move ();
+      lock_release (&frame_table_lock);
       frame_free (frame->frame_address, true);
 
       evicted = true;
+      return evicted;
     }
   }
 
-  lock_release (&frame_table_lock);
 
   return evicted;
 }

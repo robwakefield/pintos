@@ -566,10 +566,10 @@ setup_stack (const struct arguments *args, void **esp)
   bool success = false;
 
   kpage = frame_alloc (PAL_ZERO, ((uint8_t *) PHYS_BASE) - PGSIZE);
-  frame_set_pinned (kpage, true);
 
   if (kpage != NULL) 
     {
+      frame_set_pinned (kpage, true);
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success) {
         *esp = push_args_on_stack (args);
@@ -589,13 +589,12 @@ grow_stack (void *vaddr)
   vaddr = pg_round_down (vaddr);
   // TODO: ensure this is correct
   if (vaddr < ((uint8_t *) PHYS_BASE) - MAX_STACK_SIZE) {
-    printf ("STACK IS TOO BIG!\n");
     return false;
   }
 
-  void *kpage = frame_alloc (PAL_ZERO, vaddr); // TODO: free this somewhere
+  void *kpage = frame_alloc (PAL_ZERO, vaddr);
   if (kpage == NULL) {
-    printf ("Couldn't grow stack: eviction needs implementing\n");
+    printf ("Couldn't grow stack: frame table is full!\n");
     return false;
   }
 
@@ -612,7 +611,7 @@ grow_stack (void *vaddr)
   if (!install_page (p->addr, kpage, true)) {
     frame_free (kpage, true);
     free (p);
-    printf ("Unable to grow stack!?\n");
+    printf ("Unable to grow stack!\n");
     return false;
   }
   return true;
@@ -710,7 +709,7 @@ bool load_file_page (struct page *p, void *kpage) {
   p->status = IN_FRAME;
   add_to_pages (kpage, p);
 
-  frame_set_pinned(kpage, false);
+  frame_set_pinned (kpage, false);
   pagedir_set_dirty (t->pagedir, kpage, false);
 
   return true;
@@ -729,6 +728,7 @@ load_page(struct hash *pt, uint32_t *pagedir, struct page *p)
   if (kpage == NULL) {
     return false;
   }
+  frame_set_pinned (kpage, true);
 
   /* Load page data into the frame. */
   bool writable = true;
@@ -754,14 +754,14 @@ load_page(struct hash *pt, uint32_t *pagedir, struct page *p)
     break;
 
   case FILE:
+  case MMAPPED:
     /* Load page from file into allocated frame. */
     if (!file_share_page (p)) {
       return load_file_page (p, kpage);
     }
     load_page (pt, pagedir, p);
-    break;
-  case MMAPPED:
-    return load_file_page (p, kpage);
+    return;
+
   default:
     ASSERT (false);
   }
