@@ -2,6 +2,7 @@
 #include "page.h"
 #include "devices/swap.h"
 #include "userprog/pagedir.h"
+#include "threads/loader.h"
 #include <stdio.h>
 
 static struct hash *frame_table;
@@ -10,7 +11,10 @@ static struct lock frame_table_lock;
 static struct lock frame_list_lock;
 
 static struct list_elem *clock_ptr;
-static struct list_elem *resetting_ptr;
+static struct list_elem *reset_ptr;
+
+static bool reset_set = false;
+static int frames_in_list = 0;
 
 /* Initialization code for frame table. */
 void
@@ -22,7 +26,7 @@ frame_table_init (void) {
   list_init (&frame_list);
 
   clock_ptr = NULL;
-  resetting_ptr = NULL;
+  reset_ptr = NULL;
 }
 
 /* Hash function for frame table. */
@@ -82,6 +86,8 @@ frame_free (void *frame, bool free_page) {
     /* Deallocate the frame table entry. */
     struct frame_entry *f = hash_entry (to_remove, struct frame_entry, hash_elem);
     hash_delete (frame_table, &f->hash_elem);
+    list_remove (&f->list_elem);
+    frames_in_list -= 1;
     if (free_page) {
        palloc_free_page (frame);
     }
@@ -93,50 +99,12 @@ frame_free (void *frame, bool free_page) {
 /* Allocates a frame for the given page. */
 void *
 frame_alloc (enum palloc_flags flags, void *upage) {
-  bool evicted = false;
+  bool evict_success = false;
 
   void *f_page = palloc_get_page (PAL_USER | flags);
 
   if(f_page == NULL) {
-    /* Page allocation faied -> choose page to evict. */
-    struct frame_entry *frame;
-
-    while (!evicted) {
-      ASSERT (clock_ptr != NULL);
-      frame = list_entry (clock_ptr, struct frame_entry, list_elem);
-
-      if (frame->pinned) {
-        /* Frame is pinned, cannot evict. Move on to next frame. */
-        clock_hand_move ();
-        continue;
-      } 
-  
-      if (pagedir_is_accessed (frame->owner->pagedir, frame->upage)) {
-        /* Referenced bit set -> give second chance and move clock pointer. */
-        pagedir_set_accessed (frame->owner->pagedir, frame->upage, false);
-        pagedir_set_accessed (frame->owner->pagedir, frame->frame_address, false);
-        clock_hand_move ();
-      
-      } else {
-        /* Referenced bit not set -> evict page. */
-        struct page *p = page_lookup (frame->owner->page_table, frame->upage);
-        ASSERT (p != NULL);
-
-        /* Swap out page. */
-        p->swap_slot = swap_out (p->addr);
-        p->kpage = NULL;
-        p->status = SWAPPED;
-        pagedir_clear_page (frame->owner->pagedir, p->addr);
-
-        /* Remove frame. */
-        clock_hand_move ();
-        frame_free (frame->frame_address, true);
-
-        evicted = true;
-      }
-
-      // reset_hand_move (resetting_ptr);
-    }
+    evict_success = eviction ();
 
     /* Allocate after page eviction -> should succeed in this chance. */
     f_page = palloc_get_page (PAL_USER | flags);
@@ -149,15 +117,16 @@ frame_alloc (enum palloc_flags flags, void *upage) {
   ASSERT (new_frame != NULL);
 
   lock_acquire (&frame_list_lock);
-  if (evicted) {
+  if (evict_success) {
+    /* If frame was evicted, insert new frame at clock pointer. */
     list_insert (clock_ptr, &new_frame->list_elem);
   } else {
+    /* If no eviction was needed, insert new frame at the end of the frame list, move clock hand. */
     list_push_back (&frame_list, &new_frame->list_elem);
     clock_hand_move ();
   }
+  frames_in_list += 1;
   lock_release (&frame_list_lock);
-
-  // move clock hand?
   
   struct thread *t = thread_current ();
 
@@ -186,8 +155,52 @@ frame_alloc (enum palloc_flags flags, void *upage) {
   return f_page;
 }
 
+bool
+eviction (void) {
+  /* Page allocation faied -> choose page to evict. */
+  bool evicted = false;
+  struct frame_entry *frame;
+
+  while (!evicted) {
+    ASSERT (clock_ptr != NULL);
+    frame = list_entry (clock_ptr, struct frame_entry, list_elem);
+
+    if (frame->pinned) {
+      /* Frame is pinned, cannot evict. Move on to next frame. */
+      clock_hand_move ();
+      continue;
+    } 
+  
+    if (pagedir_is_accessed (frame->owner->pagedir, frame->upage)) {
+      /* Referenced bit set -> give second chance and move clock pointer. */
+      pagedir_set_accessed (frame->owner->pagedir, frame->upage, false);
+      pagedir_set_accessed (frame->owner->pagedir, frame->frame_address, false);
+      clock_hand_move ();
+      
+    } else {
+      /* Referenced bit not set -> evict page. */
+      struct page *p = page_lookup (frame->owner->page_table, frame->upage);
+      ASSERT (p != NULL);
+
+      /* Swap out page. */
+      p->swap_slot = swap_out (p->addr);
+      p->kpage = NULL;
+      p->status = SWAPPED;
+      pagedir_clear_page (frame->owner->pagedir, p->addr);
+
+      /* Remove frame. */
+      clock_hand_move ();
+      frame_free (frame->frame_address, true);
+
+      evicted = true;
+    }
+  }
+
+  return evicted;
+}
+
 void
-clock_hand_move ()
+clock_hand_move (void)
 {
   ASSERT (!list_empty(&frame_list));
 
@@ -195,6 +208,17 @@ clock_hand_move ()
     clock_ptr = list_begin (&frame_list);
   } else {
     clock_ptr = list_next (clock_ptr);
+  }
+
+  if (!reset_set) {
+    if (frames_in_list > (init_ram_pages/2) && 
+         (clock_ptr == NULL || clock_ptr == list_end (&frame_list))) 
+    {
+    reset_ptr = list_begin (&frame_list);
+    reset_set = true;
+    }
+  } else {
+    reset_hand_move ();
   }
 }
 
@@ -206,8 +230,13 @@ reset_hand_move (void)
   /* Set reference bit of page pointed to by the second clock hand to 0. */
   struct frame_entry *frame = list_entry (clock_ptr, struct frame_entry, list_elem);
   pagedir_set_accessed (frame->owner->pagedir, frame->upage, false);
+  pagedir_set_accessed (frame->owner->pagedir, frame->frame_address, false);
 
-  //clock_hand_move (resetting_ptr);
+  if (reset_ptr == NULL || reset_ptr == list_end (&frame_list)) {
+    reset_ptr = list_begin (&frame_list);
+  } else {
+    reset_ptr = list_next (reset_ptr);
+  }
 }
 
 void

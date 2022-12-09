@@ -10,8 +10,6 @@
 #include "threads/vaddr.h"
 #include "threads/thread.h"
 
-#define BUCKET_COUNT 16
-
 struct frame_entry
 {
     void *frame_address;
@@ -35,6 +33,7 @@ struct frame_entry *create_entry (void *frame);
 struct frame_entry *search_elem (void *address);
 void remove_frame (void *frame);
 
+bool eviction (void);
 void clock_hand_move (void);
 void reset_hand_move (void);
 

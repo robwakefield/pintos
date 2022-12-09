@@ -21,7 +21,7 @@
 #include "vm/frame.h"
 #include "vm/page.h"
 #include "userprog/fdTable.h"
-#include "userprog/syscall.h"
+#include "userprog/mapId.h"
 
 /* Passed argument struct */
 struct arguments {
@@ -192,7 +192,8 @@ process_exit (void)
   uint32_t *pd;
 
   lock_acquire(&filesys_lock);
-  close_process(thread_current()->tid);
+  close_files(thread_current()->tid);
+  close_mapId(thread_current()->tid);
   lock_release(&filesys_lock);
 
   /* Once process exits, stop all children threads waiting blocked on sema_exit. */
@@ -741,7 +742,6 @@ load_page(struct hash *pt, uint32_t *pagedir, struct page *p)
   {
   case ALL_ZERO:
     /* Zeroed out page. */
-    //printf ("page case ALL_ZERO\n");
     memset (kpage, 0, PGSIZE);
     break;
 
@@ -752,8 +752,7 @@ load_page(struct hash *pt, uint32_t *pagedir, struct page *p)
 
   case SWAPPED:
     /* Swap in: load the data from the swap disc. */
-    //printf ("page case SWAPPED\n");
-    ASSERT (p->swap_slot != -1);
+    ASSERT ((int) p->swap_slot != -1);
     swap_in (kpage, p->swap_slot);
     p->status = IN_FRAME;
     break;
@@ -764,7 +763,8 @@ load_page(struct hash *pt, uint32_t *pagedir, struct page *p)
       return load_file_page (p, kpage);
     }
     break;
-
+  case MMAPPED:
+    return load_file_page (p, kpage);
   default:
     ASSERT (false);
   }
@@ -789,6 +789,7 @@ bool file_share_page (struct page *p) {
   if (p->kpage != NULL) {
     return false;
   }
+
   // search page table for page pointing to same file 
   struct hash *pt = thread_current ()->page_table;
   struct page *temp = malloc (sizeof (struct page));
@@ -801,16 +802,17 @@ bool file_share_page (struct page *p) {
     /* No corresponding file in pt to share with */
     return false;
   }
+
   struct page *s = hash_entry (e, struct page, hash_elem);
-  if (s == NULL) {
-    return false;
-  }
+  ASSERT (s != NULL);
+
   page_install_frame (pt, p->addr, s->kpage);
   if (s->status == IN_FRAME) {
     return true;
   } else {
     p->status = s->status;
-    // SWAP (p)
+    // SWAP PAGE
+    p->swap_slot = swap_out (p->addr);
     printf ("SHARED PAGE IS NOT IN FRAME\n");
     return true;
   }

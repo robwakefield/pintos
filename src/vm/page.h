@@ -56,6 +56,8 @@ bool page_set_dirty (struct hash *pt, void *vaddr, bool dirty);
 
 bool page_alloc_with_file (struct hash *pt, void *upage, struct file *file, off_t offset, 
                       uint32_t read_bytes, uint32_t zero_bytes, bool writable);
+bool page_alloc_mmap (struct hash *pt, void *upage, struct file *file, off_t offset, 
+                      uint32_t read_bytes, uint32_t zero_bytes, bool writable);
 bool page_install_frame (struct hash *pt, void *upage, void *kpage);
 
 bool load_file (void *kpage, struct page *p);

@@ -17,6 +17,6 @@ void file_init(void);
 struct file* fd_to_file(int);
 int assign_fd (struct file *);
 void remove_fd (int);
-void close_process (int);
+void close_files (int);
 
 #endif /* userprog/fdTable.h */

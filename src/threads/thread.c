@@ -797,7 +797,6 @@ init_thread (struct thread *t, const char *name, int priority)
 
 #ifdef VM
   t->page_table = NULL;
-  list_init (&mmap_list);
 #endif
   
   list_init(&(t->locks));

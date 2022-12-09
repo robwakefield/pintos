@@ -29,12 +29,13 @@
 #include "userprog/gdt.h"
 #include "userprog/syscall.h"
 #include "userprog/tss.h"
-#include "vm/frame.h"
 #else
 #include "tests/threads/tests.h"
 #endif
 #ifdef VM
+#include "vm/frame.h"
 #include "devices/swap.h"
+#include "userprog/mapId.h"
 #endif
 #ifdef FILESYS
 #include "devices/block.h"
@@ -93,6 +94,7 @@ main (void)
   /* Initialize ourselves as a thread so we can use locks,
      then enable console locking. */
   file_init();
+  mmap_init();
   thread_init ();
   console_init ();  
 
@@ -120,7 +122,6 @@ main (void)
 #ifdef USERPROG
   exception_init ();
   syscall_init ();
-  frame_table_init ();
 #endif
 
   /* Start thread scheduler and enable interrupts. */
@@ -138,6 +139,8 @@ main (void)
 #ifdef VM
   /* Initialise the swap disk */  
   swap_init ();
+  frame_table_init ();
+  mmap_init ();
 #endif
 
   printf ("Boot complete.\n");
