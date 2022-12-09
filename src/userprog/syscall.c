@@ -69,7 +69,7 @@ syscall_handler (struct intr_frame *f)
 {
   thread_current ()->esp = f->esp;
   /* Call appropriate system call function from system calls array. */
-  int syscall_num = *(int *) valid_pointer (f->esp);
+  int syscall_num = *(int *) valid_pointer (f->esp, f, 0);
 
   if (syscall_num >= SYS_HALT && syscall_num <= SYS_MUNMAP) {
     syscall_handlers[syscall_num] (f);
@@ -78,10 +78,35 @@ syscall_handler (struct intr_frame *f)
   } 
 }
 
-/* Returns true if the pointer is a valid user pointer */
-void *valid_pointer (void *p)
+
+   /* Reads a byte at user virtual address UADDR.
+      UADDR must be below PHYS_BASE.
+      Returns the byte value if successful, -1 if a segfault
+      occurred. */
+static int
+get_user (const uint8_t *uaddr)
 {
-  if (!is_user_vaddr (p) || pagedir_get_page (thread_current ()->pagedir, p) == NULL) {
+     int result;
+     asm ("movl $1f, %0; movzbl %1, %0; 1:"
+          : "=&a" (result) : "m" (*uaddr));
+     return result;
+}
+   /* Writes BYTE to user address UDST.
+      UDST must be below PHYS_BASE.
+      Returns true if successful, false if a segfault occurred. */
+static bool
+put_user (uint8_t *udst, uint8_t byte)
+{
+     int error_code;
+     asm ("movl $1f, %0; movb %b2, %1; 1:"
+          : "=&a" (error_code), "=m" (*udst) : "q" (byte));
+     return error_code != -1;
+}
+
+/* Returns true if the pointer is a valid user pointer */
+void *valid_pointer (void *p, struct intr_frame *f, bool write)
+{
+  if (!is_user_vaddr (p)) {
     exit_with_code (-1);
   }
   thread_current ()->esp = f->esp;
@@ -108,7 +133,7 @@ void exit_with_code (int status) {
 
 /* Get ith argument */
 void *get_argument (struct intr_frame *f, int i) {
-  return valid_pointer(f->esp + (i + 1) * 4);
+  return valid_pointer(f->esp + (i + 1) * 4, f, 0);
 }
 
 void
@@ -124,7 +149,7 @@ syscall_exit (struct intr_frame *f) {
 
 void
 syscall_exec (struct intr_frame *f) {
-  const char *cmd_line = (char*) valid_pointer (*(void**) get_argument (f, 0));
+  const char *cmd_line = (char*) valid_pointer (*(void**) get_argument (f, 0), f, 0);
   tid_t child_tid = process_execute (cmd_line);
   f->eax = child_tid;
 }
@@ -144,7 +169,7 @@ syscall_wait (struct intr_frame *f) {
 
 void
 syscall_create (struct intr_frame *f) {
-  const char *file = (const char*) valid_pointer (*(void**) get_argument (f, 0));
+  const char *file = (const char*) valid_pointer (*(void**) get_argument (f, 0), f, 0);
   unsigned int initial_size = *(unsigned int*) get_argument (f, 1);
 
   if (file == NULL) {
@@ -169,7 +194,7 @@ syscall_remove (struct intr_frame *f) {
 
 void
 syscall_open (struct intr_frame *f) {
-  const char *name = (const char*) valid_pointer (*(void**) get_argument (f, 0));
+  const char *name = (const char*) valid_pointer (*(void**) get_argument (f, 0), f, 0);
   if (name == NULL) {
     f->eax = -1;
     return;
@@ -203,10 +228,10 @@ syscall_filesize (struct intr_frame *f) {
 void
 syscall_read (struct intr_frame *f) {
   int fd = *(int*) get_argument (f, 0);
-  void *buffer = valid_pointer (*(void**) get_argument (f, 1));
+  void *buffer = valid_pointer (*(void**) get_argument (f, 1), f, 1);
   unsigned size = *(unsigned*) get_argument (f, 2);
   /* Ensure the entirety of buffer is valid */
-  valid_pointer (buffer + size);
+  valid_pointer (buffer + size, f, 1);
   if (fd == STDIN_FILENO) {
     *(char*) buffer = input_getc();
     f->eax = 1;
@@ -225,11 +250,11 @@ syscall_read (struct intr_frame *f) {
 void
 syscall_write (struct intr_frame *f) {
   int fd = *(int *) get_argument (f, 0);
-  void *buffer = valid_pointer (*(void**) get_argument (f, 1));
+  void *buffer = valid_pointer (*(void**) get_argument (f, 1), f, 0);
   unsigned size = *(unsigned *) get_argument (f, 2);
   
   /* Ensure the entirety of buffer is valid */
-  valid_pointer (buffer + size);
+  valid_pointer (buffer + size, f, 0);
 
   if (fd == STDOUT_FILENO) {
     putbuf ((char *) buffer, size);

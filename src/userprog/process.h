@@ -2,7 +2,7 @@
 #define USERPROG_PROCESS_H
 
 #include "threads/thread.h"
-
+#include "vm/page.h"
 
 #define MAX_STACK_SIZE 0x200000
 

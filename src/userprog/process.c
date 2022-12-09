@@ -205,6 +205,7 @@ process_exit (void)
     sema_up(&temp->sema_exit);
   }
 
+
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -221,6 +222,10 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
+
+  /* Destroy the page hash table. */
+  page_table_destroy ();
+  cur->page_table = NULL;
   
   sema_up (&cur->sema_wait);
 
@@ -338,6 +343,13 @@ load (const struct arguments *args, void (**eip) (void), void **esp)
     goto done;
   process_activate ();
 
+  /* Create page hash table for current thread. */
+  t->page_table = malloc (sizeof (struct hash));
+  if (t->page_table == NULL) {
+    goto done;
+  }
+  hash_init (t->page_table, page_hash, page_less, NULL);
+
   /* Open executable file. */
   lock_acquire(&filesys_lock);
   file = filesys_open (file_name);
@@ -419,7 +431,7 @@ load (const struct arguments *args, void (**eip) (void), void **esp)
                   zero_bytes = ROUND_UP (page_offset + phdr.p_memsz, PGSIZE);
                 }
               if (!load_segment (file, file_page, (void *) mem_page,
-                                 read_bytes, zero_bytes, writable))
+                                 read_bytes, zero_bytes, writable))          
                 goto done;
             }
           else
@@ -531,48 +543,18 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
          and zero the final PAGE_ZERO_BYTES bytes. */
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
-      
-      /* Check if virtual page already allocated */
-      struct thread *t = thread_current ();
-      uint8_t *kpage = pagedir_get_page (t->pagedir, upage);
-      
-      if (kpage == NULL){
-        
-        /* Get a new page of memory. */
-        kpage = palloc_get_page (PAL_USER);
-        if (kpage == NULL){
-          return false;
-        }
-        
-        /* Add the page to the process's address space. */
-        if (!install_page (upage, kpage, writable)) 
-        {
-          palloc_free_page (kpage);
 
-          return false; 
-        }     
-        
-      } else {
-        
-        /* Check if writable flag for the page should be updated */
-        if(writable && !pagedir_is_writable(t->pagedir, upage)){
-          pagedir_set_writable(t->pagedir, upage, writable); 
-        }
-        
-      }
-
-      /* Load data into the page. */
-      if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes){
-        return false; 
-      }
-      memset (kpage + page_read_bytes, 0, page_zero_bytes);
-
+      page_alloc_with_file (thread_current ()->page_table, upage, file, ofs, page_read_bytes, 
+                            page_zero_bytes, writable);
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
+      ofs += page_read_bytes;
       upage += PGSIZE;
     }
+
   return true;
+
 }
 
 /* Create a minimal stack by mapping a zeroed page at the top of
@@ -649,7 +631,7 @@ static void *push_args_on_stack (const struct arguments *args) {
   }
   
   /* Round esp down to multiple of 4 */
-  esp -= ((uint8_t) esp) % 4;
+  esp -= ((uint32_t) esp) % 4;
 
   /* Push address of each argument (RTL) */
   for (int i = args->argc; i >= 0; i--) {
@@ -658,8 +640,9 @@ static void *push_args_on_stack (const struct arguments *args) {
   }
   
   /* Push argv */
-  memcpy (esp - sizeof (char **), &esp, sizeof (char **));
-  esp -= sizeof(char **);
+  void *argv_p = esp;
+  esp -= sizeof (char **);
+  memcpy (esp, &argv_p, sizeof (char **));
   /* Push argc */
   esp -= sizeof (uint32_t);
   memcpy (esp, &args->argc, sizeof (uint32_t));
