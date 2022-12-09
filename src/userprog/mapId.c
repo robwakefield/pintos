@@ -14,7 +14,6 @@
 #include "userprog/syscall.h"
 #include <string.h>
 #include "userprog/mapId.h"
-
 static struct list file_list;
 
 void mmap_init(){
@@ -117,6 +116,7 @@ int assign_mapId(struct file *file,void *addr){
           table->table[i] = entry;
           table->free -= 1;
           return mapId + i;
+          
         }
       }
     }
@@ -179,7 +179,9 @@ void close_mapId(int tid){
   for(struct mmapTable *table = proc->mmapTable;(table != NULL);){
     for(int i = 0; i < MM_SIZE && table->free < MM_SIZE ;i++){
       if (table->table[i] != NULL){
+
         entry = table->table[i];
+        unmmap(i+a);
         file_close(entry->file);
         free(entry);
         table->table[i] = NULL;
@@ -191,6 +193,7 @@ void close_mapId(int tid){
       return;
     } 
     table = table->nextTable;
+    a += MM_SIZE;
   }
 }
 
