@@ -351,7 +351,6 @@ void syscall_mmap (struct intr_frame *f){
   int i;
   uint32_t read_bytes;
   uint32_t zero_bytes;
-  
   for( i = 0; i < size; i = i + PGSIZE){
     if (i+PGSIZE < size){
       read_bytes = PGSIZE;
@@ -361,7 +360,7 @@ void syscall_mmap (struct intr_frame *f){
       zero_bytes = PGSIZE - read_bytes;
     }
     
-    if(! page_alloc_mmap(thread_current ()->page_table,addr + i,newFile,PGSIZE*i,read_bytes,zero_bytes,true)){
+    if(! page_alloc_mmap(thread_current ()->page_table,addr + i,newFile,i,read_bytes,zero_bytes,true)){
       f->eax = -1;
       for(i = i - PGSIZE; i >0; i = i - PGSIZE){ 
         page_dealloc(thread_current ()->page_table,addr + i);
