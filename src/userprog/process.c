@@ -693,16 +693,23 @@ bool load_file_page (struct page *p, void *kpage) {
     }      
   }
 
-  lock_acquire (&filesys_lock);
+  bool file_locked = lock_held_by_current_thread (&filesys_lock);
+  if (!file_locked) {
+    lock_acquire (&filesys_lock);
+  }
 
   /* Load data into the page. */
   if(!load_file (kpage, p)) {
+    if (!file_locked) {
+      lock_release (&filesys_lock);
+    }
     frame_free (kpage, true);
-    lock_release (&filesys_lock);
     return false;
   }
 
-  lock_release (&filesys_lock);
+  if (!file_locked) {
+    lock_release (&filesys_lock);
+  }
 
   p->kpage = kpage;
   p->status = IN_FRAME;
