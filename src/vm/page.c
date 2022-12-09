@@ -10,6 +10,7 @@
 #include "userprog/syscall.h"
 
 static void page_destroy (struct hash_elem *e, void *aux UNUSED);
+static struct lock unload_lock;
 
 unsigned
 page_hash (const struct hash_elem *e, void *aux UNUSED)
@@ -247,70 +248,31 @@ load_file (void *kpage, struct page *p)
   return true;
 }
 
-bool
-page_munmap(struct hash *pt, uint32_t *pagedir,
-    void *upage, struct file *f, off_t offset, size_t bytes)
+void
+page_to_disk (struct page *p, void *kpage)
 {
-  struct page *p = page_lookup (pt, upage);
-  ASSERT (p != NULL);
+  lock_acquire (&unload_lock);
 
-  // Pin the associated frame if loaded
-  // otherwise, a page fault could occur while swapping in (reading the swap disk)
-  if (p->status == IN_FRAME) {
-    ASSERT (p->kpage != NULL);
-    frame_set_pinned (p->kpage, true);
-  }
-
-
-  // see also, vm_load_page()
-  switch (p->status)
-  {
-  case IN_FRAME:
-    ASSERT (p->kpage != NULL);
-
-    // Dirty frame handling (write into file)
-    // Check if the upage or mapped frame is dirty. If so, write to file.
-    bool is_dirty = p->dirty;
-    is_dirty = is_dirty || pagedir_is_dirty(pagedir, p->addr);
-    is_dirty = is_dirty || pagedir_is_dirty(pagedir, p->kpage);
-    if (is_dirty) {
-      file_write_at (f, p->addr, bytes, offset);
-    }
-
-    // clear the page mapping, and release the frame
-    frame_free (p->kpage, true);
-    pagedir_clear_page (pagedir, p->addr);
-    break;
-
-  case SWAPPED:
+  if (p->status == FILE && pagedir_is_dirty (p->owner->pagedir, p->addr) &&
+      !p->writable)
     {
-      bool is_dirty = p->dirty;
-      is_dirty = is_dirty || pagedir_is_dirty (pagedir, p->addr);
-      if (is_dirty) {
-        // load from swap, and write back to file
-        void *tmp_page = palloc_get_page (0); // in the kernel
-        swap_in (tmp_page, p->swap_slot);
-        file_write_at (f, tmp_page, PGSIZE, offset);
-        palloc_free_page (tmp_page);
-      }
-      else {
-        // just throw away the swap.
-        swap_drop (p->swap_slot);
-      }
+      /* Write the page back to the file. */
+      frame_set_pinned (kpage, true);
+      lock_acquire (&filesys_lock);
+
+      file_seek (p->file, p->offset);
+      file_write (p->file, kpage, p->read_bytes);
+      lock_release (&filesys_lock);
+      frame_set_pinned (kpage, false);
+    } else if (p->status == SWAPPED || pagedir_is_dirty (p->owner->pagedir, p->addr))
+    {
+      /* Store the page to swap. */
+      p->status = SWAPPED;
+      p->swap_slot = swap_out (kpage);
     }
-    break;
+  lock_release (&unload_lock);
 
-  case FILE:
-    // do nothing.
-    break;
+  pagedir_clear_page (p->owner->pagedir, p->addr);
 
-  default:
-    // Impossible, such as ALL_ZERO
-    ASSERT (false);
-  }
-
-  // the supplemental page table entry is also removed.
-  // so that the unmapped memory is unreachable. Later access will fault.
-  page_dealloc (pt, p);
-  return true;
+  p->kpage = NULL;
 }

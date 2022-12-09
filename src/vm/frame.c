@@ -183,7 +183,7 @@ eviction (void) {
       ASSERT (p != NULL);
 
       /* Swap out page. */
-      p->swap_slot = swap_out (p->addr);
+      p->swap_slot = swap_out (p->kpage);
       p->kpage = NULL;
       p->status = SWAPPED;
       pagedir_clear_page (frame->owner->pagedir, p->addr);
