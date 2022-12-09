@@ -30,7 +30,7 @@ unsigned frame_hash (const struct hash_elem *h, void *aux UNUSED);
 bool frame_less_func (const struct hash_elem *e1, const struct hash_elem *e2, void *aux UNUSED);
 
 void *frame_alloc (enum palloc_flags flags, void *upage);
-void frame_free (void *frame, bool free_page);
+void frame_free (void *kpage, bool free_page);
 
 struct frame_entry *create_entry (void);
 struct frame_entry *search_elem (void *address);

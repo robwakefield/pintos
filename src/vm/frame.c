@@ -69,28 +69,49 @@ search_elem (void *address) {
 /* Frees all resources used by frame table entry
 and removes entry from the frame table. */
 void
-frame_free (void *frame, bool free_page) {
-  ASSERT (is_kernel_vaddr (frame));
-  ASSERT (pg_ofs (frame) == 0);
+frame_free (void *kpage, bool free_page) {
+  ASSERT (is_kernel_vaddr (kpage));
+  ASSERT (pg_ofs (kpage) == 0);
   
   lock_acquire (&frame_table_lock);
 
-  struct frame_entry *to_remove = frame_find (frame);
+  struct frame_entry *frame = frame_find (kpage);
+  ASSERT (frame != NULL);
 
-  ASSERT (to_remove != NULL);
+  struct page *p;
+
+  lock_acquire (&frame->pages_lock);
+  for (e = list_begin (&frame->pages); e != list_end (&frame->pages);) {
+    p = list_entry (e, struct page, list_elem);
+    ASSERT (p != NULL);
+
+    if (p->owner == thread_current ()) {
+      e = list_remove (&p->list_elem);
+      //TODO: free the page table entry?
+      if (p->kpage == kpage) {
+        page_dealloc(thread_current ()->page_table, p);
+      }
+    } else {
+      e = list_next (e);
+    }
+  }
+
+  bool no_reference = list_empty (&frame->pages);
+
+  lock_release (&frame->pages_lock);
 
 
-  if (to_remove != NULL) {
+  if (no_reference) {
     /* Deallocate the frame table entry. */
-    struct frame_entry *f = hash_entry (to_remove, struct frame_entry, hash_elem);
     hash_delete (frame_table, &f->hash_elem);
+    /* Remove from list for clock algorithm. */
     list_remove (&f->list_elem);
     frames_in_list -= 1;
 
     if (free_page) {
-       palloc_free_page (frame);
+       palloc_free_page (frame->frame_address);
     }
-    free (f);
+    free (frame);
   } 
   lock_release (&frame_table_lock);
 }
@@ -178,7 +199,7 @@ eviction (void) {
       /* Referenced bit not set -> evict page. */
       lock_acquire (&frame->pages_lock);
       for (e = list_begin (&frame->pages); e != list_end (&frame->pages); e = list_next (e)) {
-        struct page *p = list_entry (e, struct thing, elem);
+        struct page *p = list_entry (e, struct page, list_elem);
         ASSERT (p != NULL);
 
         /* Swap out page. */
@@ -194,13 +215,10 @@ eviction (void) {
       lock_release (&frame_table_lock);
       frame_free (frame->frame_address, true);
 
-      evicted = true;
-      return evicted;
+      return true;
     }
   }
-
-
-  return evicted;
+  return true;
 }
 
 void

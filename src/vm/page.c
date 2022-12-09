@@ -66,12 +66,9 @@ page_dealloc (struct hash *pt, struct page *p)
 
   if (hash_delete (pt, &p->hash_elem) != NULL)
   {
-    if (p->kpage != NULL) {
-      frame_free (p->kpage, true);
-    }
     if (pagedir_get_page (thread_current ()->pagedir, p->addr) != NULL) {
       pagedir_clear_page (thread_current ()->pagedir, p->addr);
-    }  
+    }
   }
 
   free (p);
@@ -240,31 +237,32 @@ load_file (void *kpage, struct page *p)
   return true;
 }
 
-void
-page_to_disk (struct page *p, void *kpage)
-{
-  lock_acquire (&unload_lock);
+// void
+// page_to_disk (struct page *p, void *kpage)
+// {
+//   lock_acquire (&unload_lock);
 
-  if (p->status == FILE && pagedir_is_dirty (p->owner->pagedir, p->addr) &&
-      !p->writable)
-    {
-      /* Write the page back to the file. */
-      frame_set_pinned (kpage, true);
-      lock_acquire (&filesys_lock);
+//   if (p->status == FILE && pagedir_is_dirty (p->owner->pagedir, p->addr) &&
+//       !p->writable)
+//     {
+//       /* Write the page back to the file. */
+//       frame_set_pinned (kpage, true);
+//       lock_acquire (&filesys_lock);
 
-      file_seek (p->file, p->offset);
-      file_write (p->file, kpage, p->read_bytes);
-      lock_release (&filesys_lock);
-      frame_set_pinned (kpage, false);
-    } else if (p->status == SWAPPED || pagedir_is_dirty (p->owner->pagedir, p->addr))
-    {
-      /* Store the page to swap. */
-      p->status = SWAPPED;
-      p->swap_slot = swap_out (kpage);
-    }
-  lock_release (&unload_lock);
+//       file_seek (p->file, p->offset);
+//       file_write (p->file, kpage, p->read_bytes);
+//       lock_release (&filesys_lock);
+//       frame_set_pinned (kpage, false);
+//     } else if (p->status == SWAPPED || pagedir_is_dirty (p->owner->pagedir, p->addr))
+//     {
+//       /* Store the page to swap. */
+//       p->status = SWAPPED;
+//       p->swap_slot = swap_out (kpage);
 
-  pagedir_clear_page (p->owner->pagedir, p->addr);
+//     }
+//   lock_release (&unload_lock);
 
-  p->kpage = NULL;
-}
+//   pagedir_clear_page (p->owner->pagedir, p->addr);
+
+//   p->kpage = NULL;
+// }
