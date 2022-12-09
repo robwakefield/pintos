@@ -116,11 +116,38 @@ FirstName LastName <email@domain.example>
 >> file mapping table.  
 >> Identify the purpose of each in roughly 25 words.
 
+struct mmapTable{
+  struct mmapProc *header;
+  int tabNum;
+  struct mmapTable *nextTable;
+  struct mmapTable *prevTable;
+  int free;
+  void* table[MM_SIZE];
+};
+
+Stores pointers to the start of MMAP pages with the mapID acting as the index. The table expands itself as MMaps are opened in the same way as the FDTables do. 
+
+struct mmapProc{
+    int tid;
+    struct list_elem elem;
+    struct mmapTable *mmapTable;
+};
+
+The headers for the mapId tables. Links to the main table for the process and can be found in the list by matching to the tid.
+
+static struct list file_list; 
+
+A list of the mapId tables
 ---- ALGORITHMS ----
 
 >> C2: (3 marks)
 >> Explain how you determine whether a new file mapping overlaps with any 
 >> existing segment and how you handle such a case.
+
+Firstly we check if the address given lies inside the area set aside for the initial stack and return -1 if this is the case.
+Then we try to open each page in turn, first checking if the page is already allocated using page_lookup to check whether the address corrosponds to an existing entry. 
+If a page is already allocated then any pages that had previously been allocated for the MMAP are deallocated and -1 is returned.
+If all the pages are successfully allocated then it is stored in the MapId table and the corosponding MapId is returned.
 
 ---- RATIONALE ----
 
@@ -128,3 +155,5 @@ FirstName LastName <email@domain.example>
 >> Mappings created with "mmap" have similar semantics to those of data 
 >> demand-paged from executables. 
 >> How does your code-base take advantage of this?
+
+Once pages are allocated data from files are loaded and evicted in the same way since this behavour is the same between them. 
