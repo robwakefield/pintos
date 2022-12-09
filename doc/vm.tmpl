@@ -8,7 +8,7 @@
 
 >> Fill in the names and email addresses of your group members.
 
-FirstName LastName <email@domain.example>
+Rob Wakefield <rgw20@ic.ac.uk>
 FirstName LastName <email@domain.example>
 FirstName LastName <email@domain.example>
 
@@ -41,6 +41,8 @@ FirstName LastName <email@domain.example>
 >> A3: (2 marks)
 >> How have you implemented sharing of read only pages?
 
+When a read only page is attempted to be loaded, we first check whether we can share with another page. The page table of the current thread is searched for a age which contains the same data needed by the page we want to load in (the file and offset). If this isn't found then the page is loaded in like normal from the file. However, if a matching page is found we copy all the values stored in that page such as the address of the underlying frame (if any) and whether or not the page has been swapped or not. So now the page points to the correct frame and has the correct status so we call the function to load the page with this new information. If the page's status is now IN_FRAME then we are done and the page points to that frame. If the page's status is SWAPPED then the frame is swapped back in to the frame table.
+
 ---- SYNCHRONIZATION ----
 
 >> A4: (2 marks) 
@@ -49,11 +51,15 @@ FirstName LastName <email@domain.example>
 >> You should consider both when there are and are not free frames 
 >> available in memory.
 
+Lock on the frame table.
+
 ---- RATIONALE ----
 
 >> A5: (2 marks)
 >> Why did you choose the data structure(s) that you did for representing the
 >> supplemental page table and frame table?
+
+Hash.
 
                PAGING TO AND FROM DISK
                =======================
@@ -77,6 +83,8 @@ FirstName LastName <email@domain.example>
 >> how do you adjust the page directory of process Q (and any other data 
 >> structures) to reflect the frame Q no longer has?
 
+
+
 ---- SYNCHRONIZATION ----
 
 >> B4: (2 marks)
@@ -97,6 +105,8 @@ FirstName LastName <email@domain.example>
 >> Explain how you handle access to user pages that are not present when a
 >> system call is made.
 
+When we check that a pointer in a system call is valid, we check whether we can read or write to that location using the provided functions get_user and put_user from Task 2. These will cause a page fault if the user pages are not present and if this is the case the page fault handler will find the page containing the faulting address in the thread's page table. It then tries to load this page in before returning, allowing get_user/put_user to run again and if they do not page fault the second time, the address must be valid. So when the pointers are used during the syscall the page will be present.
+
 ---- RATIONALE ----
 
 >> B8: (2 marks)
@@ -116,11 +126,38 @@ FirstName LastName <email@domain.example>
 >> file mapping table.  
 >> Identify the purpose of each in roughly 25 words.
 
+struct mmapTable{
+  struct mmapProc *header;
+  int tabNum;
+  struct mmapTable *nextTable;
+  struct mmapTable *prevTable;
+  int free;
+  void* table[MM_SIZE];
+};
+
+Stores pointers to the start of MMAP pages with the mapID acting as the index. The table expands itself as MMaps are opened in the same way as the FDTables do. 
+
+struct mmapProc{
+    int tid;
+    struct list_elem elem;
+    struct mmapTable *mmapTable;
+};
+
+The headers for the mapId tables. Links to the main table for the process and can be found in the list by matching to the tid.
+
+static struct list file_list; 
+
+A list of the mapId tables
 ---- ALGORITHMS ----
 
 >> C2: (3 marks)
 >> Explain how you determine whether a new file mapping overlaps with any 
 >> existing segment and how you handle such a case.
+
+Firstly we check if the address given lies inside the area set aside for the initial stack and return -1 if this is the case.
+Then we try to open each page in turn, first checking if the page is already allocated using page_lookup to check whether the address corrosponds to an existing entry. 
+If a page is already allocated then any pages that had previously been allocated for the MMAP are deallocated and -1 is returned.
+If all the pages are successfully allocated then it is stored in the MapId table and the corosponding MapId is returned.
 
 ---- RATIONALE ----
 
@@ -128,3 +165,5 @@ FirstName LastName <email@domain.example>
 >> Mappings created with "mmap" have similar semantics to those of data 
 >> demand-paged from executables. 
 >> How does your code-base take advantage of this?
+
+Once pages are allocated data from files are loaded and evicted in the same way since this behavour is the same between them. 

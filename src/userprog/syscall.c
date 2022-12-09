@@ -243,7 +243,7 @@ syscall_read (struct intr_frame *f) {
     if (file != NULL) {  
       f->eax = file_read (file, buffer, size);
     }
-      lock_release (&filesys_lock);
+    lock_release (&filesys_lock);
   }
 }
 
