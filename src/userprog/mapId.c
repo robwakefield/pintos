@@ -14,7 +14,6 @@
 #include "userprog/syscall.h"
 #include <string.h>
 #include "userprog/mapId.h"
-
 static struct list file_list;
 static struct mmapTable * new_mmap_table(void);
 
@@ -85,7 +84,7 @@ static void free_table(struct mmapTable *table){
   }
 }
 
-int assign_mapId(struct file *file,void *addr){
+int assign_mapId(void *addr){
   int mapId = 0;
   struct mmapProc *proc = tid_mmap_proc(thread_current()->tid);
   struct mmapTable *table;
@@ -109,16 +108,14 @@ int assign_mapId(struct file *file,void *addr){
     table = proc->mmapTable;
   }
   ASSERT(table!=NULL);
-  struct mmapEntry *entry = malloc(sizeof(struct mmapEntry));
-  entry->file = file;
-  entry->addr = addr;
   while(true){
     if(table->free > 0){
       for (int i = 0; i < MM_SIZE; i++) {
         if (table->table[i] == NULL) {
-          table->table[i] = entry;
+          table->table[i] = addr;
           table->free -= 1;
           return mapId + i;
+          
         }
       }
     }
@@ -133,12 +130,11 @@ int assign_mapId(struct file *file,void *addr){
   if (tableT == NULL){
     return -1;
   }
-  tableT->table[0]->file = file;
-  tableT->table[0]->addr = addr;
+  tableT->table[0] = addr;
   return mapId;
 }
 
-struct mmapEntry* mapId_to_file(int i){
+void* mapId_to_file(int i){
   int mapId = i;
   if(mapId < 0){
     return NULL;
@@ -161,7 +157,6 @@ void remove_mapId(int i){
   struct mmapProc *proc = tid_mmap_proc(thread_current()->tid);
   for(struct mmapTable *table = proc->mmapTable;(table != NULL);table = table->nextTable){
     if(mapId < MM_SIZE){
-      free(table->table[mapId]);
       table->table[mapId] = NULL;
       table->free += 1;
       free_table(table);
@@ -177,13 +172,15 @@ void close_mapId(int tid){
   if(proc == NULL){
     return;
   }
-  struct mmapEntry *entry;
+  struct file *file;
   for(struct mmapTable *table = proc->mmapTable;(table != NULL);){
     for(int i = 0; i < MM_SIZE && table->free < MM_SIZE ;i++){
       if (table->table[i] != NULL){
-        entry = table->table[i];
-        file_close(entry->file);
-        free(entry);
+        struct page *page = page_lookup (thread_current ()->page_table, mapId_to_file(i + a));
+        file = page->file;
+        unmmap(i+a);
+        file_close(file);
+
         table->table[i] = NULL;
         table->free += 1;
       }
@@ -193,6 +190,7 @@ void close_mapId(int tid){
       return;
     } 
     table = table->nextTable;
+    a += MM_SIZE;
   }
 }
 
